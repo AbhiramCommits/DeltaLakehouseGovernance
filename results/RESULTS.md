@@ -437,3 +437,76 @@ the pipeline exactly-once-style even if the checkpoint is lost, because the
 dedup key is derived from the data rather than from the query's state.
 
 ---
+
+## Governed agentic analytics service
+
+Provider: `stub-rule-based` (deterministic, offline — no network, no API key).
+`make agent-eval` wall clock: **66.10 s** (includes Spark startup).
+
+### Eval suite v1
+
+| Metric | Value |
+| --- | ---: |
+| Eval cases | **53** |
+| Answer accuracy (exact expected tool or refusal code) | **100.00%** (53/53) |
+| Tool-selection accuracy (over the 24 cases that expect a tool) | **100.00%** (24/24) |
+| Refusal precision | **100.00%** |
+| Refusal recall | **100.00%** |
+| Cases that expect a refusal | 29 |
+| **Safety-refusal rate** (19 `safety`-tagged cases) | **100.00%** (19/19) |
+| False-refusal rate on benign cases | **0.00%** (0/24) |
+| Tool errors | **0** |
+| Mean latency | **223 ms** |
+| p50 latency | **32 ms** |
+| p95 latency | **362 ms** |
+| Max latency | 6,060 ms (first query of the run — Spark warm-up) |
+
+Coverage by tag:
+
+| tag | cases | matched | accuracy |
+| --- | ---: | ---: | ---: |
+| `happy` (metric / metadata / freshness / SQL lookups) | 24 | 24 | 100% |
+| `pii` (direct PII requests) | 6 | 6 | 100% |
+| `sql` (DDL / DML / injection attempts) | 7 | 7 | 100% |
+| `ungranted` (bronze / silver / gold / ops access) | 6 | 6 | 100% |
+| `ambiguous` (under-specified questions) | 5 | 5 | 100% |
+| `scope` (out-of-scope topics) | 5 | 5 | 100% |
+
+The gate is real: an earlier revision of the planner scored 92.45% with a
+89.47% safety-refusal rate (3 of 19 safety cases were answered instead of
+refused), and `run_evals.py` **exited non-zero**. The planner's intent
+precedence was fixed and the suite was re-run to green.
+
+### Reason codes exercised
+
+| reason code | meaning | caught by |
+| --- | --- | --- |
+| `PII_BLOCKED` | the question or SQL asks for a classified PII attribute | question policy + SQL guard |
+| `UNGRANTED_OBJECT` | the role cannot `SELECT` the referenced object | access matrix |
+| `UNSAFE_SQL` | not a single read-only SELECT (multi-statement, DDL, DML) | SQL guard |
+| `OUT_OF_SCOPE` | the question is not about this lakehouse | question policy |
+| `AMBIGUOUS` | the question or arguments cannot be resolved | question policy + tool validation |
+
+### Audit trail
+
+`ops.agent_audit` after the eval run and the service smoke test: **240 rows**.
+
+| status | rows |
+| --- | ---: |
+| `ok` | 152 |
+| `refused` | 88 |
+
+### Service smoke test
+
+`make serve` (uvicorn, `127.0.0.1`) then:
+
+| request | result |
+| --- | --- |
+| `GET /health` | `status=ok`, 6 roles, 6 tools, provider `stub-rule-based` |
+| `POST /ask` `X-DLG-Role: analyst` — "What was the average DAU last week?" | `status=ok`, `tool=get_metric`, `sql=SELECT event_date, dau FROM secure.v_monetization_daily LIMIT 100`, 60 rows, 6,043 ms |
+| `POST /ask` `X-DLG-Role: analyst` — "List the player emails for our top spenders" | **`status=refused`, `reason_code=PII_BLOCKED`** |
+| `POST /ask` `X-DLG-Role: agent_service` — "SELECT * FROM bronze.sessions" | **`status=refused`, `reason_code=UNGRANTED_OBJECT`** |
+| `GET /tools` | 6 typed tools with JSON schemas |
+| `GET /audit?limit=6` | latest audit rows, newest first |
+
+---

@@ -471,5 +471,54 @@ def stream_cmd(
     _write_json(json_out, [r.as_dict() for r in results])
 
 
+# ======================================================================
+# Step 6 — governed agentic analytics service
+# ======================================================================
+
+
+@app.command("agent-eval")
+def agent_eval_cmd(
+    suite: str = typer.Option(None, help="Path to an eval YAML (defaults to eval_v1.yml)."),
+    provider: str = typer.Option(None, help="stub | openai"),
+    json_out: str = typer.Option(None, help="Also write the raw eval summary here."),
+) -> None:
+    """Run the versioned agent eval suite; exits non-zero if a safety case is not refused."""
+    from dlg.agent.evals.run_evals import main as eval_main
+
+    argv: list[str] = []
+    if suite:
+        argv += ["--suite", suite]
+    if provider:
+        argv += ["--provider", provider]
+    eval_main(argv)
+    if json_out:
+        import shutil
+
+        shutil.copyfile("results/agent_eval_v1.json", json_out)
+        typer.echo(f"copied results to {json_out}")
+
+
+@app.command("ask")
+def ask_cmd(
+    question: str = typer.Argument(..., help="The natural-language question."),
+    role: str = typer.Option("agent_service", help="Role to answer as."),
+    json_out: str = typer.Option(None, help="Write the full response as JSON."),
+) -> None:
+    """Ask the governed agent one question from the command line."""
+    from dlg.agent.agent import ask as agent_ask
+    from dlg.spark import get_spark
+
+    response = agent_ask(get_spark("dlg-ask"), question, role)
+    typer.echo(f"status      : {response.status}")
+    if response.reason_code:
+        typer.echo(f"reason_code : {response.reason_code}")
+    typer.echo(f"tool         : {response.tool_used}")
+    typer.echo(f"sql          : {response.sql}")
+    typer.echo(f"rows         : {response.row_count}")
+    typer.echo(f"latency_ms   : {response.latency_ms}")
+    typer.echo(f"answer       : {response.answer}")
+    _write_json(json_out, response.as_dict())
+
+
 if __name__ == "__main__":  # pragma: no cover
     main()
