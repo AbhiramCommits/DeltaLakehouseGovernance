@@ -134,7 +134,7 @@ jobs:
 
       # Fails if the gold metrics drift from tests/baseline/metrics_baseline.json.
       - name: Regression baseline check
-        run: python -m dlg.cli baseline-check
+        run: make baseline-check
 
       - name: Upload results artifact
         if: always()

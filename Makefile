@@ -67,6 +67,9 @@ lint: ## Ruff lint + format check
 baseline-update: ## Recompute the regression baseline from the current gold tables
 	$(PY) -m dlg.cli baseline-update
 
+baseline-check: ## Fail if the gold metrics drift from the committed baseline
+	$(PY) -m dlg.cli baseline-check
+
 all: gen-data bronze silver gold governance quality stream agent-eval test ## Full pipeline end to end
 	@echo "== full pipeline complete =="
 
