@@ -42,7 +42,20 @@ def delta_conf(settings: Settings, app_name: str | None = None) -> dict[str, str
         "spark.sql.adaptive.enabled": "true",
         "spark.sql.adaptive.coalescePartitions.enabled": "true",
         # --- local ergonomics ----------------------------------------------
-        "spark.sql.warehouse.dir": os.path.join(os.path.abspath("."), "spark-warehouse"),
+        "spark.sql.warehouse.dir": os.path.abspath(settings.warehouse_dir),
+        # Spark 3 defaults to an *in-memory* catalog, which would make named
+        # tables (bronze.sessions, gold.dim_player, secure views, ...) invisible
+        # to the next process.  Backing the catalog with Hive + an embedded Derby
+        # metastore keeps it durable between CLI invocations, the way a managed
+        # platform's catalog does.
+        "spark.sql.catalogImplementation": "hive",
+        "spark.hadoop.javax.jdo.option.ConnectionURL": (
+            "jdbc:derby:;databaseName=" + os.path.abspath(settings.metastore_dir) + ";create=true"
+        ),
+        "spark.hadoop.javax.jdo.option.ConnectionDriverName": "org.apache.derby.jdbc.EmbeddedDriver",
+        "spark.driver.extraJavaOptions": (
+            "-Dderby.system.home=" + os.path.abspath(os.path.dirname(settings.metastore_dir))
+        ),
         "spark.driver.host": "127.0.0.1",
         "spark.ui.showConsoleProgress": "false",
         "spark.sql.parquet.compression.codec": "snappy",

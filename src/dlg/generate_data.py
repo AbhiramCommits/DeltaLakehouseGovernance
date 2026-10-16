@@ -320,20 +320,42 @@ class Generator:
         }
 
     def _player_day_plan(self, n_sessions: int) -> list[tuple[dict, int]]:
-        """Pick (player, day_offset) pairs that produce realistic retention."""
-        plan: list[tuple[dict, int]] = []
+        """Deterministic list of ``(player, day_offset)`` pairs, one per session.
+
+        Two properties matter downstream:
+
+        * **full player coverage** -- every generated player gets at least one
+          session, so ``silver.purchases`` -> ``silver.sessions`` referential
+          integrity is a meaningful check rather than a 20% rejection rate;
+        * **unique ``(player_id, session_id)`` pairs** -- so the only duplicate
+          business keys in the data are the ones deliberately injected.
+        """
+        rng = self.rng
         max_day = self.settings.n_days - 1
-        while len(plan) < n_sessions:
-            player = self.rng.choice(self.players)
-            install = player["install_day"]
-            # Heavy-tailed engagement: many 1-day players, a long tail.
-            span = 1 + int(self.rng.expovariate(0.22))
-            span = min(span, max_day - install + 1)
-            active_days = self.rng.sample(range(install, install + span), k=min(span, max(1, span)))
-            for day in active_days:
-                if len(plan) >= n_sessions:
-                    break
-                plan.append((player, day))
+        plan: list[tuple[dict, int]] = []
+        seen: set[tuple[str, int]] = set()
+
+        for player in self.players[:n_sessions]:
+            day = min(player["install_day"], max_day)
+            seen.add((player["player_id"], day))
+            plan.append((player, day))
+
+        attempts = 0
+        limit = n_sessions * 60
+        while len(plan) < n_sessions and attempts < limit:
+            attempts += 1
+            player = rng.choice(self.players)
+            install = min(player["install_day"], max_day)
+            # Heavy-tailed engagement: many single-day players, a long tail.
+            span = min(1 + int(rng.expovariate(0.22)), max_day - install + 1)
+            day = install + rng.randrange(max(1, span))
+            key = (player["player_id"], day)
+            if key in seen:
+                continue
+            seen.add(key)
+            plan.append((player, day))
+
+        rng.shuffle(plan)
         return plan[:n_sessions]
 
     def generate_sessions(self) -> None:
@@ -347,7 +369,7 @@ class Generator:
         for player, day in plan:
             key = (player["player_id"], day)
             per_player_day[key] += 1
-            row = self._session_row(player, day, per_player_day[key])
+            row = self._session_row(player, day, 1)
             writer.write(row)
             base_rows += 1
             self.log.emit("sessions")

@@ -51,6 +51,10 @@ class Settings(BaseSettings):
     results_dir: str = "results"
     docs_dir: str = "docs"
 
+    # ---- spark / metastore --------------------------------------------
+    warehouse_dir: str = "spark-warehouse"
+    metastore_dir: str = "spark-warehouse/metastore_db"
+
     # ---- spark ---------------------------------------------------------
     app_name: str = "DeltaLakehouseGovernance"
     shuffle_partitions: int = 8
@@ -114,9 +118,21 @@ class Settings(BaseSettings):
     def roles_path(self) -> Path:
         return Path(self.roles_file)
 
+    @property
+    def lake(self) -> str:
+        """Absolute local lake root, or the raw URI for object-store roots.
+
+        Local roots are absolutised because Spark resolves a relative
+        ``CREATE TABLE ... LOCATION`` against ``spark.sql.warehouse.dir`` -- which
+        would silently scatter table data inside the warehouse directory.
+        """
+        if self.is_remote_lake:
+            return self.lake_root.rstrip("/")
+        return os.path.abspath(self.lake_root)
+
     def lake_path(self, *parts: str) -> str:
-        """Join ``parts`` onto :attr:`lake_root`, normalising separators."""
-        root = self.lake_root.rstrip("/")
+        """Join ``parts`` onto :attr:`lake`, normalising separators."""
+        root = self.lake.rstrip("/")
         tail = "/".join(p.strip("/") for p in parts if p)
         return f"{root}/{tail}" if tail else root
 

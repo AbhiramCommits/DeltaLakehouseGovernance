@@ -138,11 +138,13 @@ REJECT_REASONS = (
 
 QUARANTINE_SCHEMA = StructType(
     [
+        StructField("_dataset", StringType(), False),
         StructField("_reject_reason", StringType(), False),
         StructField("_reject_detail", StringType(), True),
         StructField("_source_file", StringType(), True),
         StructField("_batch_id", StringType(), True),
         StructField("_quarantine_ts", TimestampType(), False),
+        StructField("_record_hash", StringType(), False),
         StructField("_raw_record", StringType(), True),
     ]
 )
