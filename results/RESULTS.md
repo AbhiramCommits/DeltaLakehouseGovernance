@@ -200,7 +200,7 @@ still a fact row.
 | Metric | Value |
 | --- | ---: |
 | Lineage nodes (tables + governed views) | **20** |
-| Table-level edges | **27** |
+| Table-level edges | **28** |
 | Column-level edges | **149** |
 
 Example impact query:
@@ -278,5 +278,110 @@ Scope guarantee, spot-checked by `dlg access-matrix`:
 Retention is pooled across matured cohorts (retained players / cohort members) and
 maturity-gated: D1 and D7 matured for 31 cohorts, D30 for 30 (the final cohort is
 not old enough for a D30 reading and reports `NULL`, not zero).
+
+---
+
+## Data quality, SLAs and observability
+
+`make quality` = `quality-run` + `sla-check` + `observe`. Wall clock for the whole
+target: **96.58 s** (quality 42.77 s, SLA 27.47 s, observe 28.14 s, each a separate
+JVM).
+
+### Expectation run
+
+| Metric | Value |
+| --- | ---: |
+| Expectation suites | 12 (one per silver/gold table plus two bronze contracts) |
+| Expectations evaluated | **57** |
+| Passed | **56** |
+| Failed | **1** |
+| BLOCKING failures | **0** (the build gates on this and passes) |
+| WARN failures | **1** |
+| Overall pass rate | **98.25%** |
+| Quality run wall clock | **39.02 s** (in-pipeline) |
+
+Results are persisted to `ops.dq_results` — **57 rows**, 14 columns:
+
+| status | rows |
+| --- | ---: |
+| `PASS` | 56 |
+| `FAIL` | 1 |
+
+The single failing expectation is the deliberate one:
+
+| | |
+| --- | --- |
+| expectation | `bronze.sessions.raw_session_start_ts_is_iso8601` (WARN) |
+| kind | `regex` on `bronze.sessions.session_start_ts` |
+| rows checked | 202,026 |
+| rows failed | **429** |
+| fail rate | **0.002123** (0.2123%) |
+| threshold | 0.0005 (a 99.95% ISO-8601 conformance SLO) |
+| why it fails | the generator injects unparseable client timestamps into the landing files. `silver` quarantines those rows as `BAD_TIMESTAMP`, but the **raw** contract is still violated — which is exactly the signal the alerting path exists to surface. |
+
+### SLA checks
+
+| Metric | Value |
+| --- | ---: |
+| SLA checks | **36** (3 per table: staleness, volume, null rate) |
+| OK | 33 |
+| Breached | **1** |
+| Not applicable | 2 (quarantine tables have only audit columns) |
+| SLA run wall clock | 16.14 s |
+
+`ops.sla_status` — **36 rows**, 9 columns.
+
+The real breach:
+
+| | |
+| --- | --- |
+| table | `gold.fct_retention_cohort` |
+| SLA | `max_null_rate` |
+| measured | **0.032258** (3.23%) |
+| threshold | 0.02 (2%) |
+| worst column | `d30_retained` |
+| why it breaches | the newest install cohort has not matured for D30, so its D30 aggregates are `NULL` rather than zero. The maturity gate is doing its job; the alert correctly flags that the aggregate is not fully populated. |
+
+Staleness is measured against the lake's own clock (ingest timestamp for
+bronze/silver, business clock for marts). All 12 tables pass staleness; the
+largest measured staleness is 434.11 minutes against a 43,200-minute limit.
+
+### Alerts
+
+`results/alerts.json` — **2 alerts**:
+
+| severity | source | id | metric vs threshold |
+| --- | --- | --- | --- |
+| `WARNING` | `dq_expectation` | `dq::bronze.sessions::raw_session_start_ts_is_iso8601` | fail_rate 0.002123 vs 0.0005 |
+| `CRITICAL` | `sla` | `sla::gold.fct_retention_cohort::max_null_rate` | 0.032258 vs 0.02 |
+
+### Observability snapshot
+
+`results/observability_report.md` + `ops.table_metrics` (**12 rows**, 15 columns):
+
+| Metric | Value |
+| --- | ---: |
+| Tables instrumented | **12** |
+| Total rows | **1,941,640** |
+| Total size | **175,723,948 bytes** (175.7 MB) |
+| Total active files | **150** |
+| Snapshot wall clock | 23.86 s |
+
+Per-table highlights (rows / size / files / delta version):
+
+| table | rows | size (MB) | files | delta v |
+| --- | ---: | ---: | ---: | ---: |
+| `bronze.sessions` | 202,026 | 22.16 | 2 | 4 |
+| `bronze.match_events` | 602,939 | 55.89 | 1 | 2 |
+| `bronze.purchases` | 40,272 | 3.71 | 1 | 2 |
+| `bronze.quarantine` | 3,061 | 0.40 | 3 | 6 |
+| `silver.sessions` | 200,000 | 27.10 | 60 | 2 |
+| `silver.match_events` | 600,000 | 59.19 | 36 | 2 |
+| `silver.purchases` | 40,000 | 4.34 | 40 | 4 |
+| `silver.quarantine` | 4,285 | 0.60 | 3 | 6 |
+| `gold.fct_player_daily` | 223,966 | 1.53 | 1 | 4 |
+| `gold.dim_player` | 25,000 | 0.79 | 1 | 4 |
+| `gold.fct_monetization_daily` | 60 | 0.00 | 1 | 4 |
+| `gold.fct_retention_cohort` | 31 | 0.00 | 1 | 4 |
 
 ---

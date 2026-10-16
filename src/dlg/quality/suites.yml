@@ -1,0 +1,196 @@
+# =============================================================================
+# DeltaLakehouseGovernance — data quality expectation suites
+#
+# One suite per silver and gold table (plus two bronze contracts). Every
+# expectation is evaluated against the live Delta table; the results land in
+# `ops.dq_results`.
+#
+# severity:
+#   BLOCKING -> a failure fails the run and CI (`make quality` exits non-zero)
+#   WARN     -> a failure raises an alert but does not gate
+#
+# There is exactly one deliberately-WARN expectation that genuinely fails on the
+# injected bad data: `bronze.sessions` raw timestamp conformance. The generator
+# writes unparseable timestamp strings into the landing files; silver quarantines
+# those rows with BAD_TIMESTAMP, but the *raw* contract is still violated, and
+# that is exactly the signal the alerting path exists to surface.
+# =============================================================================
+
+version: 1
+
+suites:
+
+  # ---------------------------------------------------------------------------
+  # Bronze contracts — raw data conformance
+  # ---------------------------------------------------------------------------
+  - name: bronze_sessions_raw_contract
+    table: bronze.sessions
+    expectations:
+      - name: raw_session_start_ts_is_iso8601
+        kind: regex
+        column: session_start_ts
+        pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$"
+        severity: WARN
+        max_fail_rate: 0.0005
+        description: >
+          Raw client timestamps must be ISO-8601. 99.95% conformance SLO; the
+          injected malformed timestamps breach it and raise the WARN alert.
+      - name: raw_record_hash_present
+        kind: not_null
+        column: _record_hash
+        severity: BLOCKING
+        max_fail_rate: 0.0
+      - name: raw_record_hash_unique
+        kind: unique
+        columns: [_record_hash]
+        severity: BLOCKING
+        max_fail_rate: 0.0
+
+  - name: bronze_purchases_raw_contract
+    table: bronze.purchases
+    expectations:
+      - name: raw_purchase_id_not_null
+        kind: not_null
+        column: purchase_id
+        severity: BLOCKING
+        max_fail_rate: 0.0
+      - name: raw_currency_is_usd
+        kind: accepted_values
+        column: currency
+        values: [USD]
+        severity: BLOCKING
+        max_fail_rate: 0.0
+      - name: raw_batch_id_not_null
+        kind: not_null
+        column: _batch_id
+        severity: BLOCKING
+        max_fail_rate: 0.0
+
+  # ---------------------------------------------------------------------------
+  # Silver contracts
+  # ---------------------------------------------------------------------------
+  - name: silver_sessions_contract
+    table: silver.sessions
+    expectations:
+      - { name: session_id_not_null, kind: not_null, column: session_id, severity: BLOCKING, max_fail_rate: 0.0 }
+      - { name: player_id_not_null, kind: not_null, column: player_id, severity: BLOCKING, max_fail_rate: 0.0 }
+      - { name: session_key_unique, kind: unique, columns: [player_id, session_id], severity: BLOCKING, max_fail_rate: 0.0 }
+      - { name: platform_accepted, kind: accepted_values, column: platform, values: [mobile, pc, console], severity: BLOCKING, max_fail_rate: 0.0 }
+      - { name: duration_in_range, kind: range, column: duration_minutes, min_value: 1, max_value: 1440, severity: BLOCKING, max_fail_rate: 0.0 }
+      - { name: kills_in_range, kind: range, column: kills, min_value: 0, max_value: 500, severity: BLOCKING, max_fail_rate: 0.0 }
+      - { name: deaths_in_range, kind: range, column: deaths, min_value: 0, max_value: 500, severity: BLOCKING, max_fail_rate: 0.0 }
+      - { name: birth_year_in_range, kind: range, column: birth_year, min_value: 1900, max_value: 2021, severity: WARN, max_fail_rate: 0.0 }
+      - name: event_date_not_null
+        kind: not_null
+        column: event_date
+        severity: BLOCKING
+        max_fail_rate: 0.0
+        description: "the partition column must never be NULL"
+      - name: session_event_date_is_mature
+        kind: row_count_between
+        min_rows: 150000
+        max_rows: 250000
+        severity: BLOCKING
+        description: "volume guard: a big drop means ingest silently broke"
+      - name: session_ingest_is_fresh
+        kind: freshness_within
+        column: _ingest_ts
+        max_staleness_minutes: 43200
+        severity: BLOCKING
+
+  - name: silver_match_events_contract
+    table: silver.match_events
+    expectations:
+      - { name: event_id_not_null, kind: not_null, column: event_id, severity: BLOCKING, max_fail_rate: 0.0 }
+      - { name: event_id_unique, kind: unique, columns: [event_id], severity: BLOCKING, max_fail_rate: 0.0 }
+      - { name: event_type_accepted, kind: accepted_values, column: event_type, values: [kill, death, objective, match_end], severity: BLOCKING, max_fail_rate: 0.0 }
+      - { name: mode_accepted, kind: accepted_values, column: mode, values: [ranked, casual, duel, brawl], severity: BLOCKING, max_fail_rate: 0.0 }
+      - { name: ping_in_range, kind: range, column: ping_ms, min_value: 0, max_value: 5000, severity: BLOCKING, max_fail_rate: 0.0 }
+      - { name: damage_in_range, kind: range, column: damage_dealt, min_value: 0, max_value: 100000, severity: BLOCKING, max_fail_rate: 0.0 }
+      - { name: event_player_exists, kind: referential_integrity, column: player_id, ref_table: silver.sessions, ref_column: player_id, severity: WARN, max_fail_rate: 0.05 }
+      - name: event_volume_guard
+        kind: row_count_between
+        min_rows: 450000
+        max_rows: 750000
+        severity: BLOCKING
+
+  - name: silver_purchases_contract
+    table: silver.purchases
+    expectations:
+      - { name: purchase_id_not_null, kind: not_null, column: purchase_id, severity: BLOCKING, max_fail_rate: 0.0 }
+      - { name: purchase_id_unique, kind: unique, columns: [purchase_id], severity: BLOCKING, max_fail_rate: 0.0 }
+      - { name: price_positive, kind: range, column: price_usd, min_value: 0.000001, max_value: 1000, severity: BLOCKING, max_fail_rate: 0.0 }
+      - { name: quantity_in_range, kind: range, column: quantity, min_value: 1, max_value: 10, severity: BLOCKING, max_fail_rate: 0.0 }
+      - { name: category_accepted, kind: accepted_values, column: category, values: [battle_pass, skin, currency, bundle, emote], severity: BLOCKING, max_fail_rate: 0.0 }
+      - name: purchase_player_exists
+        kind: referential_integrity
+        column: player_id
+        ref_table: silver.sessions
+        ref_column: player_id
+        severity: BLOCKING
+        max_fail_rate: 0.0
+        description: "every purchase must reference a player we have seen"
+      - name: purchase_volume_guard
+        kind: row_count_between
+        min_rows: 30000
+        max_rows: 60000
+        severity: BLOCKING
+
+  # ---------------------------------------------------------------------------
+  # Gold contracts
+  # ---------------------------------------------------------------------------
+  - name: gold_dim_player_contract
+    table: gold.dim_player
+    expectations:
+      - { name: player_id_unique, kind: unique, columns: [player_id], severity: BLOCKING, max_fail_rate: 0.0 }
+      - { name: player_id_not_null, kind: not_null, column: player_id, severity: BLOCKING, max_fail_rate: 0.0 }
+      - { name: lifetime_spend_non_negative, kind: range, column: lifetime_spend, min_value: 0, max_value: 100000, severity: BLOCKING, max_fail_rate: 0.0 }
+      - { name: lifetime_sessions_positive, kind: range, column: lifetime_sessions, min_value: 1, max_value: 100000, severity: BLOCKING, max_fail_rate: 0.0 }
+      - { name: days_since_last_seen_non_negative, kind: range, column: days_since_last_seen, min_value: 0, max_value: 400, severity: BLOCKING, max_fail_rate: 0.0 }
+      - { name: churn_flag_not_null, kind: not_null, column: churn_flag, severity: BLOCKING, max_fail_rate: 0.0 }
+      - { name: dim_volume_guard, kind: row_count_between, min_rows: 20000, max_rows: 30000, severity: BLOCKING }
+
+  - name: gold_fct_player_daily_contract
+    table: gold.fct_player_daily
+    expectations:
+      - { name: player_day_unique, kind: unique, columns: [event_date, player_id], severity: BLOCKING, max_fail_rate: 0.0 }
+      - { name: event_date_not_null, kind: not_null, column: event_date, severity: BLOCKING, max_fail_rate: 0.0 }
+      - { name: spend_non_negative, kind: range, column: spend_usd, min_value: 0, max_value: 100000, severity: BLOCKING, max_fail_rate: 0.0 }
+      - { name: sessions_non_negative, kind: range, column: sessions, min_value: 0, max_value: 100, severity: BLOCKING, max_fail_rate: 0.0 }
+      - { name: playtime_non_negative, kind: range, column: playtime_minutes, min_value: 0, max_value: 2000000, severity: BLOCKING, max_fail_rate: 0.0 }
+      - name: fct_player_daily_volume_guard
+        kind: row_count_between
+        min_rows: 150000
+        max_rows: 300000
+        severity: BLOCKING
+
+  - name: gold_fct_monetization_daily_contract
+    table: gold.fct_monetization_daily
+    expectations:
+      - { name: event_date_unique, kind: unique, columns: [event_date], severity: BLOCKING, max_fail_rate: 0.0 }
+      - { name: dau_positive, kind: range, column: dau, min_value: 1, max_value: 1000000, severity: BLOCKING, max_fail_rate: 0.0 }
+      - { name: arpdau_non_negative, kind: range, column: arpdau, min_value: 0, max_value: 1000, severity: BLOCKING, max_fail_rate: 0.0 }
+      - { name: conversion_rate_is_a_rate, kind: range, column: conversion_rate, min_value: 0, max_value: 1, severity: BLOCKING, max_fail_rate: 0.0 }
+      - { name: paying_users_lte_dau, kind: row_count_between, min_rows: 60, max_rows: 60, severity: BLOCKING }
+      - { name: monetization_null_rate, kind: not_null, column: revenue_usd, severity: BLOCKING, max_fail_rate: 0.0 }
+
+  - name: gold_fct_retention_cohort_contract
+    table: gold.fct_retention_cohort
+    expectations:
+      - { name: cohort_date_unique, kind: unique, columns: [cohort_date], severity: BLOCKING, max_fail_rate: 0.0 }
+      - { name: cohort_size_positive, kind: range, column: cohort_size, min_value: 1, max_value: 1000000, severity: BLOCKING, max_fail_rate: 0.0 }
+      - { name: d1_retention_is_a_rate, kind: range, column: d1_retention, min_value: 0, max_value: 1, severity: BLOCKING, max_fail_rate: 0.0 }
+      - { name: d7_retention_is_a_rate, kind: range, column: d7_retention, min_value: 0, max_value: 1, severity: BLOCKING, max_fail_rate: 0.0 }
+      - name: d30_retention_is_a_rate
+        kind: range
+        column: d30_retention
+        min_value: 0
+        max_value: 1
+        severity: WARN
+        max_fail_rate: 0.0
+        description: "NULL for cohorts that have not matured (excluded from the check)"
+      - name: cohort_count_guard
+        kind: row_count_between
+        min_rows: 20
+        max_rows: 70
+        severity: BLOCKING

@@ -251,13 +251,13 @@ tables:
     layer: gold
     description: "Player-day engagement fact: sessions, playtime, matches, kills, deaths and spend."
     classification: INTERNAL
-    upstream: [silver.sessions, silver.purchases]
+    upstream: [silver.sessions, silver.purchases, gold.dim_player]
     sla: { max_staleness_minutes: 43200, min_daily_rows: 1000, max_null_rate: 0.0 }
     columns:
       event_date: { type: date, description: "Activity date", classification: INTERNAL, keys: [pk], sources: [silver.sessions.event_date, silver.purchases.event_date] }
       player_id: { type: string, description: "Player key", classification: INTERNAL, keys: [pk], sources: [silver.sessions.player_id, silver.purchases.player_id] }
-      country: { type: string, description: "ISO-3166 alpha-2 country", classification: PII, sources: [silver.sessions.country] }
-      region: { type: string, description: "Commercial region", classification: INTERNAL, sources: [silver.sessions.region] }
+      country: { type: string, description: "ISO-3166 alpha-2 country (player attribute, from the dimension)", classification: PII, sources: [gold.dim_player.country] }
+      region: { type: string, description: "Commercial region (player attribute, from the dimension)", classification: INTERNAL, sources: [gold.dim_player.region] }
       sessions: { type: bigint, description: "Sessions started that day", classification: INTERNAL, sources: [silver.sessions.session_id] }
       playtime_minutes: { type: bigint, description: "Total session minutes", classification: INTERNAL, sources: [silver.sessions.duration_minutes] }
       matches: { type: bigint, description: "Matches completed", classification: INTERNAL, sources: [silver.sessions.matches_played] }
@@ -312,7 +312,10 @@ tables:
       once the target day falls inside the observed window, otherwise NULL.
     classification: INTERNAL
     upstream: [silver.sessions]
-    sla: { max_staleness_minutes: 43200, min_daily_rows: 1, max_null_rate: 0.5 }
+    # 2% is the "aggregates should be fully populated" expectation. It is genuinely
+    # breached (measured 3.23%) because the newest cohort has not matured: D30
+    # aggregates are NULL rather than zero. That is the intended alert.
+    sla: { max_staleness_minutes: 43200, min_daily_rows: 1, max_null_rate: 0.02 }
     columns:
       cohort_date: { type: date, description: "Install date of the cohort", classification: INTERNAL, keys: [pk], sources: [silver.sessions.event_date, silver.sessions.player_id] }
       cohort_size: { type: bigint, description: "Players whose first session is on cohort_date", classification: INTERNAL, sources: [silver.sessions.player_id] }

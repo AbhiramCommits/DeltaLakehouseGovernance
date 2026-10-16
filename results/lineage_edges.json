@@ -235,6 +235,10 @@
       "target": "gold.fct_player_daily"
     },
     {
+      "source": "gold.dim_player",
+      "target": "gold.fct_player_daily"
+    },
+    {
       "source": "silver.sessions",
       "target": "gold.dim_player"
     },
@@ -693,11 +697,11 @@
       "target": "gold.fct_player_daily.player_id"
     },
     {
-      "source": "silver.sessions.country",
+      "source": "gold.dim_player.country",
       "target": "gold.fct_player_daily.country"
     },
     {
-      "source": "silver.sessions.region",
+      "source": "gold.dim_player.region",
       "target": "gold.fct_player_daily.region"
     },
     {
@@ -891,7 +895,7 @@
   ],
   "counts": {
     "nodes": 20,
-    "table_edges": 27,
+    "table_edges": 28,
     "column_edges": 149
   }
 }

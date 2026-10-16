@@ -36,9 +36,7 @@ WITH sess AS (
   SELECT
     event_date,
     player_id,
-    max(country)  AS country,
-    max(region)   AS region,
-    count(*)      AS sessions,
+    count(*)              AS sessions,
     sum(duration_minutes) AS playtime_minutes,
     sum(matches_played)   AS matches,
     sum(kills)            AS kills,
@@ -50,21 +48,37 @@ spend AS (
   SELECT event_date, player_id, sum(price_usd * quantity) AS spend_usd
   FROM silver.purchases
   GROUP BY event_date, player_id
+),
+joined AS (
+  SELECT
+    coalesce(sess.event_date, spend.event_date) AS event_date,
+    coalesce(sess.player_id, spend.player_id)   AS player_id,
+    coalesce(sess.sessions, 0)          AS sessions,
+    coalesce(sess.playtime_minutes, 0)  AS playtime_minutes,
+    coalesce(sess.matches, 0)           AS matches,
+    coalesce(sess.kills, 0)             AS kills,
+    coalesce(sess.deaths, 0)            AS deaths,
+    cast(coalesce(spend.spend_usd, 0.0) AS DOUBLE) AS spend_usd
+  FROM sess
+  FULL OUTER JOIN spend
+    ON sess.event_date = spend.event_date AND sess.player_id = spend.player_id
 )
 SELECT
-  coalesce(sess.event_date, spend.event_date) AS event_date,
-  coalesce(sess.player_id, spend.player_id)   AS player_id,
-  sess.country,
-  sess.region,
-  coalesce(sess.sessions, 0)          AS sessions,
-  coalesce(sess.playtime_minutes, 0)  AS playtime_minutes,
-  coalesce(sess.matches, 0)           AS matches,
-  coalesce(sess.kills, 0)             AS kills,
-  coalesce(sess.deaths, 0)            AS deaths,
-  cast(coalesce(spend.spend_usd, 0.0) AS DOUBLE) AS spend_usd
-FROM sess
-FULL OUTER JOIN spend
-  ON sess.event_date = spend.event_date AND sess.player_id = spend.player_id
+  j.event_date,
+  j.player_id,
+  -- Geography is a player attribute, so it comes from the conformed dimension
+  -- rather than from whichever side of the outer join happened to match.  This
+  -- is what keeps country/region non-nullable on a spend-only day.
+  d.country,
+  d.region,
+  j.sessions,
+  j.playtime_minutes,
+  j.matches,
+  j.kills,
+  j.deaths,
+  j.spend_usd
+FROM joined j
+LEFT JOIN gold.dim_player d ON d.player_id = j.player_id
 """
 
 #: Conformed player dimension with a churn flag (no session in the last 7 days).
@@ -193,7 +207,7 @@ MART_SQL: dict[str, str] = {
 
 #: Table-level transform metadata, consumed by the lineage builder.
 MART_INPUTS: dict[str, tuple[str, ...]] = {
-    "fct_player_daily": ("silver.sessions", "silver.purchases"),
+    "fct_player_daily": ("silver.sessions", "silver.purchases", "gold.dim_player"),
     "dim_player": ("silver.sessions", "silver.purchases"),
     "fct_monetization_daily": ("silver.sessions", "silver.purchases"),
     "fct_retention_cohort": ("silver.sessions",),

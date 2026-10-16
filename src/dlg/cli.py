@@ -322,5 +322,86 @@ def main() -> None:
     app()
 
 
+# ======================================================================
+# Step 4 — data quality, SLAs and observability
+# ======================================================================
+
+
+@app.command("quality-run")
+def quality_run_cmd(
+    suites: str = typer.Option(None, help="Path to a suites.yml (defaults to the packaged one)."),
+    json_out: str = typer.Option(None, help="Write the measured DQ summary as JSON."),
+) -> None:
+    """Run the data-quality expectation suites; exit non-zero on a BLOCKING failure."""
+    from dlg.quality.alerts import alerts_path, build_alerts, dispatch_alerts
+    from dlg.quality.runner import print_report, run_quality
+    from dlg.spark import get_spark
+
+    spark = get_spark("dlg-quality")
+    run = run_quality(spark, suites_path=suites)
+    print_report(run)
+
+    if run.failed:
+        dispatch_alerts(build_alerts(quality=run))
+        typer.echo(f"wrote {alerts_path()}")
+
+    _write_json(json_out, run.summary())
+    if run.blocking_failures:
+        typer.echo(
+            f"\n{len(run.blocking_failures)} BLOCKING expectation failure(s) — failing the run",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+
+@app.command("sla-check")
+def sla_check_cmd(
+    json_out: str = typer.Option(None, help="Write the measured SLA summary as JSON."),
+) -> None:
+    """Evaluate the catalog SLA blocks against the live tables."""
+    from dlg.quality.alerts import alerts_path, build_alerts, dispatch_alerts
+    from dlg.quality.slas import print_report, run_sla_checks
+    from dlg.spark import get_spark
+
+    spark = get_spark("dlg-sla")
+    run = run_sla_checks(spark)
+    print_report(run)
+
+    if run.breaches:
+        dispatch_alerts(build_alerts(sla=run))
+        typer.echo(f"wrote {alerts_path()}")
+
+    summary = run.summary()
+    summary["breaches"] = [b.as_dict() for b in run.breaches]
+    _write_json(json_out, summary)
+
+
+@app.command("observe")
+def observe_cmd(
+    json_out: str = typer.Option(None, help="Write the observability snapshot summary as JSON."),
+) -> None:
+    """Snapshot per-table metrics into ops.table_metrics and write the report."""
+    from dlg.quality.observability import observe, write_report
+    from dlg.spark import get_spark
+
+    spark = get_spark("dlg-observe")
+    snapshot = observe(spark, run_id="observe")
+    report = write_report(snapshot)
+    from tabulate import tabulate
+
+    print(
+        tabulate(
+            [
+                [m.table, f"{m.rows:,}", f"{m.size_bytes / 1e6:.2f}", m.num_files, m.delta_version]
+                for m in snapshot.tables
+            ],
+            headers=["table", "rows", "size_mb", "files", "delta_version"],
+            tablefmt="github",
+        )
+    )
+    typer.echo(f"wrote {report}")
+    _write_json(json_out, snapshot.summary())
+
+
 if __name__ == "__main__":  # pragma: no cover
     main()
