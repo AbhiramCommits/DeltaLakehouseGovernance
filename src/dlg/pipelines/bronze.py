@@ -127,13 +127,15 @@ def _quarantine_frame(
         F.col("_source_file"),
         F.lit(batch_id).alias("_batch_id"),
         F.current_timestamp().alias("_quarantine_ts"),
+        # Content-addressed on (dataset, reason, payload): `_source_file` stays a
+        # descriptive column but is deliberately NOT part of the identity, so
+        # re-ingesting the same bytes from a differently-named file is a no-op.
         F.sha2(
             F.concat_ws(
                 "||",
                 F.lit(dataset),
                 F.lit(reason),
                 F.coalesce(raw_expr.cast("string"), F.lit("")),
-                F.coalesce(F.col("_source_file"), F.lit("")),
             ),
             256,
         ).alias("_record_hash"),

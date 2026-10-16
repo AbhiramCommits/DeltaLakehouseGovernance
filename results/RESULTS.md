@@ -385,3 +385,55 @@ Per-table highlights (rows / size / files / delta version):
 | `gold.fct_retention_cohort` | 31 | 0.00 | 1 | 4 |
 
 ---
+
+## Incremental Structured Streaming ingest
+
+Script: `scripts/stream_demo.sh` (exit code **0**, all four assertions passed).
+Source: `landing/sessions_stream`, an Auto-Loader-style file source with an explicit
+schema, `maxFilesPerTrigger=2` and a checkpoint under `_checkpoints/sessions_stream`.
+Every number below is read back from `ops.stream_batches` and the live Delta tables.
+
+### Micro-batches processed
+
+| batch_id | files | rows read | bronze + | silver + | silver ~ | duplicates suppressed | quarantined | end-to-end latency (ms) | handler (s) |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `stream_f78924bf520328d6` | 2 | 100,000 | 99,189 | 98,676 | 0 | 77 | 734 | 22,385 | 19.07 |
+| `stream_e99e457be720c178` | 1 | 50,000 | 49,581 | 49,319 | 0 | 42 | 377 | 33,093 | 9.00 |
+| `stream_4a4f1c3b0990a7a5` | 2 | 52,722 | 52,256 | 52,005 | 0 | 61 | 405 | 22,956 | 19.76 |
+| `stream_cae9305cb155033c` (duplicate file) | 1 | 50,000 | **0** | **0** | 0 | **50,000** | **0** | 37,721 | 13.50 |
+| `stream_befd167bb5444369` (duplicate-only batch) | 1 | 50,000 | **0** | **0** | 0 | **50,000** | **0** | 25,957 | 22.67 |
+| **total** | **7** | **302,722** | **201,026** | **200,000** | **0** | **100,180** | **1,516** | — | — |
+
+* micro-batches processed: **5**
+* rows ingested: **200,000** into `silver.sessions_stream`, **201,026** into
+  `bronze.sessions_stream`
+* duplicate rows suppressed: **100,180** (of which 100,000 came from the two
+  byte-identical file copies)
+* streaming rows quarantined: **1,516** (`PARSE_ERROR`, `NULL_KEY`, `BAD_TIMESTAMP`,
+  `OUT_OF_RANGE` — all written to `bronze.quarantine` with `_dataset = sessions_stream`)
+* end-to-end streaming latency per batch: **22,385 / 33,093 / 22,956 / 37,721 /
+  25,957 ms**; mean **28,422 ms**, p95 **37,721 ms**
+  *(measured from the newest source file's mtime to the micro-batch merge completing;
+  the first batch includes the query + JVM warm-up)*
+* within-batch handler time: 19.07 / 9.00 / 19.76 / 13.50 / 22.67 s; mean **16.80 s**
+
+The streaming path reproduces the batch layer exactly: `bronze.sessions_stream` =
+**201,026** rows and `silver.sessions_stream` = **200,000** rows, identical to
+`bronze.sessions` / `silver.sessions`.
+
+### Idempotency assertions
+
+| # | assertion | evidence | result |
+| --- | --- | --- | --- |
+| (a) | new rows appear after two new micro-batch files are dropped | 147,995 → 200,000 (+52,005) | **PASS** |
+| (b) | a byte-identical copy of an already-processed file adds zero rows | silver +0, bronze +0, quarantine +0 | **PASS** |
+| (c) | re-running with no new files adds zero rows (file-source checkpoint) | 200,000 → 200,000 | **PASS** |
+| (d) | replaying the last micro-batch through the same handler adds zero rows | `skipped_replay=true`, bronze +0, silver +0, quarantine +0 | **PASS** |
+
+Assertion (d) is the content-addressed `_batch_id` guard: the batch id is a hash of
+the batch's source files, so re-delivering the same batch is recognised in
+`ops.stream_batches` and short-circuits before any MERGE runs. This is what makes
+the pipeline exactly-once-style even if the checkpoint is lost, because the
+dedup key is derived from the data rather than from the query's state.
+
+---

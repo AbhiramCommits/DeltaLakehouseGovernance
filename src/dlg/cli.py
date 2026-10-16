@@ -403,5 +403,73 @@ def observe_cmd(
     _write_json(json_out, snapshot.summary())
 
 
+# ======================================================================
+# Step 5 — incremental Structured Streaming ingest
+# ======================================================================
+
+
+@app.command("stream")
+def stream_cmd(
+    once: bool = typer.Option(False, "--once", help="Run with the availableNow trigger and exit."),
+    continuous: bool = typer.Option(False, "--continuous", help="Run continuously."),
+    processing_time: str = typer.Option("10 seconds", help="Trigger interval for --continuous."),
+    replay_last_batch: bool = typer.Option(
+        False,
+        "--replay-last-batch",
+        help="Re-deliver the most recent micro-batch (expects zero rows).",
+    ),
+    json_out: str = typer.Option(None, help="Write the per-batch stats as JSON."),
+) -> None:
+    """Run the incremental streaming ingest over the landing directory."""
+    from dlg.pipelines.stream import (
+        print_report,
+        run_stream,
+        stream_batches,
+    )
+    from dlg.pipelines.stream import (
+        replay_last_batch as replay,
+    )
+    from dlg.spark import get_spark
+
+    if once and continuous:
+        typer.echo("choose one of --once / --continuous", err=True)
+        raise typer.Exit(code=2)
+
+    spark = get_spark("dlg-stream")
+
+    if replay_last_batch:
+        result = replay(spark)
+        typer.echo(result.summary_line())
+        typer.echo(
+            "replay guard held: zero rows written"
+            if result.skipped_replay and not result.silver_inserted
+            else "WARNING: the replay wrote rows"
+        )
+        _write_json(json_out, result.as_dict())
+        return
+
+    mode = "continuous" if continuous else "once"
+    typer.echo(f"running streaming ingest in '{mode}' mode")
+    results = run_stream(spark, mode=mode, processing_time=processing_time)
+    if results:
+        print_report(results)
+        total_in = sum(r.silver_inserted for r in results)
+        total_q = sum(r.quarantined for r in results)
+        typer.echo(
+            f"\n{len(results)} micro-batch(es): {total_in:,} rows merged into silver.sessions_stream, "
+            f"{total_q:,} quarantined"
+        )
+    else:
+        typer.echo("no new files to process")
+    typer.echo("\nledger:")
+    for row in stream_batches(spark):
+        typer.echo(
+            f"  {row['batch_id']} files={row['source_files']} read={row['rows_read']} "
+            f"bronze+={row['bronze_inserted']} silver+={row['silver_inserted']} "
+            f"quarantined={row['quarantined']} skipped={row['skipped_replay']}"
+        )
+    _write_json(json_out, [r.as_dict() for r in results])
+
+
 if __name__ == "__main__":  # pragma: no cover
     main()

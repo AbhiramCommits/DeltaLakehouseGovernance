@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-16T07:47:07.932876+00:00",
+  "generated_at": "2026-10-16T08:12:54.656988+00:00",
   "count": 2,
   "by_severity": {
     "CRITICAL": 1,
@@ -8,7 +8,7 @@
   "alerts": [
     {
       "id": "sla::gold.fct_retention_cohort::max_null_rate",
-      "ts": "2026-10-16T07:47:07.932415+00:00",
+      "ts": "2026-10-16T08:12:54.656867+00:00",
       "severity": "CRITICAL",
       "source": "sla",
       "table": "gold.fct_retention_cohort",
@@ -19,7 +19,7 @@
     },
     {
       "id": "dq::bronze.sessions::raw_session_start_ts_is_iso8601",
-      "ts": "2026-10-16T07:46:39.890897+00:00",
+      "ts": "2026-10-16T08:12:26.258731+00:00",
       "severity": "WARNING",
       "source": "dq_expectation",
       "table": "bronze.sessions",
