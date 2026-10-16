@@ -34,6 +34,7 @@ import os
 import time
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
+from pathlib import Path
 
 from pyspark.sql import DataFrame, SparkSession, Window
 from pyspark.sql import functions as F
@@ -73,6 +74,7 @@ __all__ = [
 BRONZE_STREAM_TABLE = "bronze.sessions_stream"
 SILVER_STREAM_TABLE = "silver.sessions_stream"
 BATCH_LEDGER_TABLE = "ops.stream_batches"
+#: Isolated landing directory used by scripts/stream_demo.sh (via DLG_STREAM_SUBDIR).
 STREAM_SOURCE_SUBDIR = "sessions_stream"
 
 #: keys that must be present for a streamed row to be usable
@@ -131,9 +133,16 @@ class MicroBatchResult:
 # --------------------------------------------------------------------------
 
 
-def source_dir(settings: Settings | None = None, subdir: str = STREAM_SOURCE_SUBDIR) -> str:
+def source_dir(settings: Settings | None = None, subdir: str | None = None) -> str:
+    """The landing directory the streaming query tails.
+
+    Defaults to ``settings.stream_subdir`` (the main sessions landing zone), so a
+    plain ``make stream`` on a fresh checkout has something to ingest.
+    ``scripts/stream_demo.sh`` sets ``DLG_STREAM_SUBDIR=sessions_stream`` to work
+    against an isolated directory it fully controls.
+    """
     settings = settings or get_settings()
-    return f"{settings.landing}/{subdir}"
+    return f"{settings.landing}/{subdir or settings.stream_subdir}"
 
 
 def _batch_id_for(files: list[str]) -> str:
@@ -548,6 +557,7 @@ def run_stream(
     """Run the streaming ingest. ``once`` = availableNow, ``continuous`` = forever."""
     settings = settings or get_settings()
     settings.ensure_dirs()
+    Path(source_dir(settings)).mkdir(parents=True, exist_ok=True)
     results: list[MicroBatchResult] = []
 
     def handler(batch: DataFrame, epoch_id: int) -> None:

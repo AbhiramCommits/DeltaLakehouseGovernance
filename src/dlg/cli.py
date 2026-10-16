@@ -520,5 +520,71 @@ def ask_cmd(
     _write_json(json_out, response.as_dict())
 
 
+# ======================================================================
+# Step 7 — regression baseline
+# ======================================================================
+
+
+@app.command("baseline-update")
+def baseline_update_cmd(
+    path: str = typer.Option(
+        None, help="Baseline file (defaults to tests/baseline/metrics_baseline.json)."
+    ),
+    print_only: bool = typer.Option(
+        False, help="Print the computed baseline instead of writing it."
+    ),
+) -> None:
+    """Recompute the gold-metric regression baseline for the current scale."""
+    from dlg.regression import compute_baseline, save_baseline
+    from dlg.spark import get_spark
+
+    spark = get_spark("dlg-baseline")
+    entry = compute_baseline(spark)
+    payload = entry.as_dict()
+    _write_json(path or None, payload)
+    if print_only:
+        typer.echo(json.dumps(payload, indent=2, default=str))
+        return
+    written = save_baseline(entry, path)
+    typer.echo(f"wrote baseline for scale '{entry.scale}' to {written}")
+    typer.echo(f"  mart rows       : {payload['mart_rows']}")
+    typer.echo(f"  headline metrics: {json.dumps(entry.headline_metrics, default=str)}")
+
+
+@app.command("baseline-check")
+def baseline_check_cmd(
+    path: str = typer.Option(None, help="Baseline file to compare against."),
+    json_out: str = typer.Option(None, help="Write the comparison result as JSON."),
+) -> None:
+    """Fail if the recomputed gold metrics drift from the committed baseline."""
+    from dlg.regression import BaselineEntry, compare, compute_baseline, load_baseline
+    from dlg.spark import get_spark
+
+    spark = get_spark("dlg-baseline-check")
+    settings = get_settings()
+    document = load_baseline(path)
+    committed = (document.get("entries") or {}).get(settings.scale)
+    if committed is None:
+        typer.echo(f"no committed baseline for scale '{settings.scale}' — skipping")
+        _write_json(json_out, {"scale": settings.scale, "status": "skipped"})
+        return
+
+    actual = compute_baseline(spark, settings)
+    mismatches = compare(actual, BaselineEntry(**committed))
+    payload = {
+        "scale": settings.scale,
+        "status": "ok" if not mismatches else "regression",
+        "mismatches": [m.__dict__ for m in mismatches],
+    }
+    _write_json(json_out, payload)
+
+    if mismatches:
+        typer.echo(f"{len(mismatches)} regression(s) against the committed baseline:", err=True)
+        for mismatch in mismatches:
+            typer.echo(f"  {mismatch}", err=True)
+        raise typer.Exit(code=1)
+    typer.echo(f"baseline check OK for scale '{settings.scale}' ({len(actual.mart_rows)} marts)")
+
+
 if __name__ == "__main__":  # pragma: no cover
     main()

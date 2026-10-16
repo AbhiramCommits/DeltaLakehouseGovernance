@@ -16,6 +16,7 @@ Supported kinds:
 ``regex``                 string values match a regular expression
 ``referential_integrity`` values exist in a reference table.column
 ``row_count_between``     the table has between ``min_rows`` and ``max_rows`` rows
+``row_count_ratio``       the table's row count is a sane fraction of a reference table
 ``freshness_within``      the newest value in the column is within N minutes
 ===============  ==========================================================
 """
@@ -43,6 +44,7 @@ KINDS = (
     "regex",
     "referential_integrity",
     "row_count_between",
+    "row_count_ratio",
     "freshness_within",
 )
 
@@ -77,6 +79,8 @@ class Expectation:
     ref_column: str | None = None
     min_rows: int | None = None
     max_rows: int | None = None
+    min_ratio: float | None = None
+    max_ratio: float | None = None
     max_staleness_minutes: float | None = None
     max_fail_rate: float = 0.0
     description: str = ""
@@ -335,6 +339,33 @@ def _row_count_between(spark: SparkSession, exp: Expectation, run_id: str) -> Ex
     )
 
 
+def _row_count_ratio(spark: SparkSession, exp: Expectation, run_id: str) -> ExpectationResult:
+    """Scale-free volume guard: rows(table) / rows(ref_table) inside a band.
+
+    Absolute row-count guards are tuned for one dataset size; a ratio guard
+    catches the failure that matters (a silent drop or duplication) at any scale,
+    which is what lets the same suites.yml gate CI's reduced run.
+    """
+    started = time.perf_counter()
+    total = spark.table(exp.table).count()
+    reference = spark.table(exp.ref_table or "").count()
+    ratio = (total / reference) if reference else 0.0
+    low = exp.min_ratio if exp.min_ratio is not None else 0.0
+    high = exp.max_ratio if exp.max_ratio is not None else float("inf")
+    passed = low <= ratio <= high
+    return _result(
+        exp,
+        run_id,
+        total,
+        0 if passed else total,
+        passed,
+        0.0,
+        f"{exp.table} has {total} rows, {ratio:.4f}x {exp.ref_table} "
+        f"(expected between {low} and {high})",
+        started,
+    )
+
+
 def _freshness_within(spark: SparkSession, exp: Expectation, run_id: str) -> ExpectationResult:
     started = time.perf_counter()
     column = exp.column or "event_ts"
@@ -367,6 +398,7 @@ _EVALUATORS = {
     "regex": _regex,
     "referential_integrity": _referential_integrity,
     "row_count_between": _row_count_between,
+    "row_count_ratio": _row_count_ratio,
     "freshness_within": _freshness_within,
 }
 

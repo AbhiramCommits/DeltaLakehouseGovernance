@@ -1,0 +1,98 @@
+{
+  "description": "Committed gold-metric regression baseline. Counts and invariants must match exactly; rate metrics are compared with a relative tolerance. Regenerate with `make baseline-update` (and with DLG_SCALE=small for the CI entry).",
+  "entries": {
+    "full": {
+      "generated_at": "2026-10-16T08:29:30.773721+00:00",
+      "headline_metrics": {
+        "arpdau_avg": 5.1456,
+        "avg_lifetime_spend_usd": 47.73,
+        "churn_rate_pct": 72.48,
+        "churned_players": 18120,
+        "cohorts_d1": 31,
+        "cohorts_d30": 30,
+        "cohorts_d7": 31,
+        "conversion_rate_avg": 0.1603,
+        "d1_retention_pct": 45.82,
+        "d30_retention_pct": 10.48,
+        "d7_retention_pct": 25.81,
+        "dau_avg": 3333.2,
+        "dau_max": 5702,
+        "days_observed": 60,
+        "players": 25000,
+        "purchases_total": 40000,
+        "revenue_total_usd": 1193150.13
+      },
+      "invariants": {
+        "dim_player_rows": 25000,
+        "fct_player_daily_negative_spend": 0,
+        "fct_player_daily_rows": 223966,
+        "max_conversion_rate": 0.370493,
+        "min_arpdau": 0.0,
+        "monetization_days": 60,
+        "monetization_purchases": 40000,
+        "monetization_revenue_usd": 1193150.13,
+        "silver_distinct_players": 25000,
+        "silver_purchases_rows": 40000,
+        "silver_sessions_rows": 200000,
+        "spend_total_usd": 1193150.13
+      },
+      "mart_rows": {
+        "gold.dim_player": 25000,
+        "gold.fct_monetization_daily": 60,
+        "gold.fct_player_daily": 223966,
+        "gold.fct_retention_cohort": 31
+      },
+      "scale": "full"
+    },
+    "small": {
+      "generated_at": "2026-10-16T08:30:17.715765+00:00",
+      "headline_metrics": {
+        "arpdau_avg": 5.7661,
+        "avg_lifetime_spend_usd": 49.87,
+        "churn_rate_pct": 70.0,
+        "churned_players": 350,
+        "cohorts_d1": 30,
+        "cohorts_d30": 30,
+        "cohorts_d7": 30,
+        "conversion_rate_avg": 0.1688,
+        "d1_retention_pct": 42.0,
+        "d30_retention_pct": 10.6,
+        "d7_retention_pct": 25.4,
+        "dau_avg": 66.65,
+        "dau_max": 122,
+        "days_observed": 60,
+        "players": 500,
+        "purchases_total": 800,
+        "revenue_total_usd": 24937.45
+      },
+      "invariants": {
+        "dim_player_rows": 500,
+        "fct_player_daily_negative_spend": 0,
+        "fct_player_daily_rows": 4478,
+        "max_conversion_rate": 0.471698,
+        "min_arpdau": 0.0,
+        "monetization_days": 60,
+        "monetization_purchases": 800,
+        "monetization_revenue_usd": 24937.45,
+        "silver_distinct_players": 500,
+        "silver_purchases_rows": 800,
+        "silver_sessions_rows": 4000,
+        "spend_total_usd": 24937.45
+      },
+      "mart_rows": {
+        "gold.dim_player": 500,
+        "gold.fct_monetization_daily": 60,
+        "gold.fct_player_daily": 4478,
+        "gold.fct_retention_cohort": 30
+      },
+      "scale": "small"
+    }
+  },
+  "exact_keys": [
+    "days_observed",
+    "purchases_total",
+    "cohorts_d1",
+    "cohorts_d7"
+  ],
+  "relative_tolerance": 0.02
+}

@@ -22,6 +22,10 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+# The demo works against an isolated landing directory so it fully controls which
+# files exist; `make stream` tails the main landing/sessions zone instead.
+export DLG_STREAM_SUBDIR="sessions_stream"
+
 PY=".venv/bin/python"
 SRC="landing/sessions"
 STREAM_SRC="landing/sessions_stream"

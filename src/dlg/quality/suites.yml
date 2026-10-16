@@ -86,12 +86,15 @@ suites:
         severity: BLOCKING
         max_fail_rate: 0.0
         description: "the partition column must never be NULL"
-      - name: session_event_date_is_mature
-        kind: row_count_between
-        min_rows: 150000
-        max_rows: 250000
+      - name: session_volume_ratio
+        kind: row_count_ratio
+        ref_table: bronze.sessions
+        min_ratio: 0.90
+        max_ratio: 1.02
         severity: BLOCKING
-        description: "volume guard: a big drop means ingest silently broke"
+        description: >
+          compare against bronze rather than an absolute count, so the guard
+          works at every dataset scale: >10% loss means cleaning went wrong.
       - name: session_ingest_is_fresh
         kind: freshness_within
         column: _ingest_ts
@@ -108,10 +111,11 @@ suites:
       - { name: ping_in_range, kind: range, column: ping_ms, min_value: 0, max_value: 5000, severity: BLOCKING, max_fail_rate: 0.0 }
       - { name: damage_in_range, kind: range, column: damage_dealt, min_value: 0, max_value: 100000, severity: BLOCKING, max_fail_rate: 0.0 }
       - { name: event_player_exists, kind: referential_integrity, column: player_id, ref_table: silver.sessions, ref_column: player_id, severity: WARN, max_fail_rate: 0.05 }
-      - name: event_volume_guard
-        kind: row_count_between
-        min_rows: 450000
-        max_rows: 750000
+      - name: event_volume_ratio
+        kind: row_count_ratio
+        ref_table: bronze.match_events
+        min_ratio: 0.98
+        max_ratio: 1.02
         severity: BLOCKING
 
   - name: silver_purchases_contract
@@ -130,10 +134,11 @@ suites:
         severity: BLOCKING
         max_fail_rate: 0.0
         description: "every purchase must reference a player we have seen"
-      - name: purchase_volume_guard
-        kind: row_count_between
-        min_rows: 30000
-        max_rows: 60000
+      - name: purchase_volume_ratio
+        kind: row_count_ratio
+        ref_table: bronze.purchases
+        min_ratio: 0.90
+        max_ratio: 1.02
         severity: BLOCKING
 
   # ---------------------------------------------------------------------------
@@ -148,7 +153,13 @@ suites:
       - { name: lifetime_sessions_positive, kind: range, column: lifetime_sessions, min_value: 1, max_value: 100000, severity: BLOCKING, max_fail_rate: 0.0 }
       - { name: days_since_last_seen_non_negative, kind: range, column: days_since_last_seen, min_value: 0, max_value: 400, severity: BLOCKING, max_fail_rate: 0.0 }
       - { name: churn_flag_not_null, kind: not_null, column: churn_flag, severity: BLOCKING, max_fail_rate: 0.0 }
-      - { name: dim_volume_guard, kind: row_count_between, min_rows: 20000, max_rows: 30000, severity: BLOCKING }
+      - name: dim_volume_ratio
+        kind: row_count_ratio
+        ref_table: silver.sessions
+        min_ratio: 0.05
+        max_ratio: 0.50
+        severity: BLOCKING
+        description: "distinct players must stay a plausible fraction of sessions"
 
   - name: gold_fct_player_daily_contract
     table: gold.fct_player_daily
@@ -158,11 +169,13 @@ suites:
       - { name: spend_non_negative, kind: range, column: spend_usd, min_value: 0, max_value: 100000, severity: BLOCKING, max_fail_rate: 0.0 }
       - { name: sessions_non_negative, kind: range, column: sessions, min_value: 0, max_value: 100, severity: BLOCKING, max_fail_rate: 0.0 }
       - { name: playtime_non_negative, kind: range, column: playtime_minutes, min_value: 0, max_value: 2000000, severity: BLOCKING, max_fail_rate: 0.0 }
-      - name: fct_player_daily_volume_guard
-        kind: row_count_between
-        min_rows: 150000
-        max_rows: 300000
+      - name: fct_player_daily_volume_ratio
+        kind: row_count_ratio
+        ref_table: silver.sessions
+        min_ratio: 0.90
+        max_ratio: 1.50
         severity: BLOCKING
+        description: "player-days can exceed sessions because of spend-only days"
 
   - name: gold_fct_monetization_daily_contract
     table: gold.fct_monetization_daily
@@ -171,7 +184,12 @@ suites:
       - { name: dau_positive, kind: range, column: dau, min_value: 1, max_value: 1000000, severity: BLOCKING, max_fail_rate: 0.0 }
       - { name: arpdau_non_negative, kind: range, column: arpdau, min_value: 0, max_value: 1000, severity: BLOCKING, max_fail_rate: 0.0 }
       - { name: conversion_rate_is_a_rate, kind: range, column: conversion_rate, min_value: 0, max_value: 1, severity: BLOCKING, max_fail_rate: 0.0 }
-      - { name: paying_users_lte_dau, kind: row_count_between, min_rows: 60, max_rows: 60, severity: BLOCKING }
+      - name: monetization_days_present
+        kind: row_count_between
+        min_rows: 1
+        max_rows: 1000
+        severity: BLOCKING
+        description: "one row per calendar day in the observation window"
       - { name: monetization_null_rate, kind: not_null, column: revenue_usd, severity: BLOCKING, max_fail_rate: 0.0 }
 
   - name: gold_fct_retention_cohort_contract

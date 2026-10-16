@@ -77,6 +77,10 @@ class Settings(BaseSettings):
     observation_days: int = 30
     #: Number of landing files each dataset is split across (micro-batch size).
     files_per_dataset: int = 4
+    #: Landing sub-directory the streaming query tails. Defaults to the main
+    #: sessions landing zone; ``scripts/stream_demo.sh`` points it at an isolated
+    #: directory so the demo can control exactly which files exist.
+    stream_subdir: str = "sessions"
 
     # ---- agent service -------------------------------------------------
     llm_base_url: str | None = None

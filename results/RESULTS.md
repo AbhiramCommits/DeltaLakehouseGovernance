@@ -363,7 +363,7 @@ largest measured staleness is 434.11 minutes against a 43,200-minute limit.
 | --- | ---: |
 | Tables instrumented | **12** |
 | Total rows | **1,941,640** |
-| Total size | **175,723,948 bytes** (175.7 MB) |
+| Total size | **175,709,453 bytes** (175.7 MB) |
 | Total active files | **150** |
 | Snapshot wall clock | 23.86 s |
 
@@ -441,7 +441,7 @@ dedup key is derived from the data rather than from the query's state.
 ## Governed agentic analytics service
 
 Provider: `stub-rule-based` (deterministic, offline — no network, no API key).
-`make agent-eval` wall clock: **66.10 s** (includes Spark startup).
+`make agent-eval` wall clock: **100.49 s** (includes Spark startup).
 
 ### Eval suite v1
 
@@ -456,10 +456,10 @@ Provider: `stub-rule-based` (deterministic, offline — no network, no API key).
 | **Safety-refusal rate** (19 `safety`-tagged cases) | **100.00%** (19/19) |
 | False-refusal rate on benign cases | **0.00%** (0/24) |
 | Tool errors | **0** |
-| Mean latency | **223 ms** |
-| p50 latency | **32 ms** |
-| p95 latency | **362 ms** |
-| Max latency | 6,060 ms (first query of the run — Spark warm-up) |
+| Mean latency | **397 ms** |
+| p50 latency | **49 ms** |
+| p95 latency | **615 ms** |
+| Max latency | 10,945 ms (first query of the run — Spark warm-up) |
 
 Coverage by tag:
 
@@ -489,12 +489,14 @@ precedence was fixed and the suite was re-run to green.
 
 ### Audit trail
 
-`ops.agent_audit` after the eval run and the service smoke test: **240 rows**.
+`ops.agent_audit` after one eval run over a clean lake: **77 rows** — one row per
+agent step (24 tool cases × 2 steps + 29 refusal cases × 1 step). The table is
+append-only, so it accumulates across runs; this is the count for a single suite.
 
 | status | rows |
 | --- | ---: |
-| `ok` | 152 |
-| `refused` | 88 |
+| `ok` | 48 |
+| `refused` | 29 |
 
 ### Service smoke test
 
@@ -508,5 +510,97 @@ precedence was fixed and the suite was re-run to green.
 | `POST /ask` `X-DLG-Role: agent_service` — "SELECT * FROM bronze.sessions" | **`status=refused`, `reason_code=UNGRANTED_OBJECT`** |
 | `GET /tools` | 6 typed tools with JSON schemas |
 | `GET /audit?limit=6` | latest audit rows, newest first |
+
+---
+
+## Tests, CI and end-to-end verification
+
+### Test suite
+
+`make test` = `pytest --cov=dlg --cov-report=term-missing`.
+
+| Metric | Value |
+| --- | ---: |
+| Tests | **211 passing** |
+| Coverage (`dlg` package) | **80%** |
+| `make test` wall clock (with coverage) | **448.67 s** |
+| Failing / skipped | 0 / 0 |
+
+Coverage by area (selected):
+
+| module | coverage |
+| --- | ---: |
+| `dlg/schemas.py` | 100% |
+| `dlg/quality/expectations.py` | 98% |
+| `dlg/timetravel.py` | 98% |
+| `dlg/agent/policy.py` | 96% |
+| `dlg/quality/alerts.py` | 94% |
+| `dlg/quality/observability.py` | 94% |
+| `dlg/pipelines/bronze.py` | 95% |
+| `dlg/governance/policies.py` | 95% |
+| `dlg/pipelines/gold.py` | 94% |
+| `dlg/agent/tools.py` | 91% |
+| `dlg/pipelines/stream.py` | 91% |
+| `dlg/governance/catalog.py` | 92% |
+| `dlg/governance/access.py` | 88% |
+| `dlg/pipelines/silver.py` | 88% |
+
+`dlg/cli.py` and `dlg/agent/service.py` show as 0% because they are exercised by the
+`make` targets and the HTTP smoke test rather than by pytest — `cli.py` is process
+entry-point wiring and `service.py` is FastAPI route wiring.
+
+The suite shares one session-scoped SparkSession pointed at a temporary lake root
+(`tests/conftest.py`), generates a 2% dataset with the real generator, and builds the
+whole medallion once. Tests then assert against real Delta tables rather than mocks.
+
+### Regression baseline
+
+`tests/baseline/metrics_baseline.json` holds the real gold metrics for both scales
+(`full`, used by `make baseline-update` on a developer machine; `small`, used by CI).
+Counts and volume invariants are compared exactly, rate metrics with a **2%**
+relative tolerance. `python -m dlg.cli baseline-check` exits non-zero on drift.
+
+### End-to-end run
+
+A full teardown (`rm -rf lakehouse spark-warehouse landing _checkpoints`) followed by
+`make all` completed every stage: gen-data → bronze → silver → gold → governance →
+quality → stream → agent-eval → test. The numbers in this file were re-verified
+against that run:
+
+| check | result |
+| --- | --- |
+| bronze row counts | 202,026 / 602,939 / 40,272 — identical |
+| silver row counts | 200,000 / 600,000 / 40,000 — identical |
+| silver quarantine by reason | 429 / 645 / 1,180 / 1,759 / 124 / 107 / 41 — identical |
+| gold mart row counts | 223,966 / 25,000 / 60 / 31 — identical |
+| headline metrics | DAU 3,333.20, ARPDAU $5.1456, D1 45.82%, D7 25.81%, D30 10.48% — identical |
+| catalog drift | 0 issues over 162 columns |
+| lineage | 20 nodes / 28 table edges / 149 column edges |
+| grant matrix | 912 cells, 255 allow / 657 deny |
+| DQ | 57 expectations, 56 pass, 1 WARN fail, 98.25% |
+| SLA | 36 checks, 33 OK, 1 breach, 2 N/A |
+| streaming (`make stream`, main landing zone) | 3 micro-batches, 200,000 rows into `silver.sessions_stream`, 1,516 quarantined |
+| eval | 53 cases, 100% answer accuracy, 100% safety-refusal rate |
+| baseline check | OK for scale `full` |
+
+`make stream` over the main landing zone produced 3 micro-batches (2 + 2 + 1 files at
+`maxFilesPerTrigger=2`) and reproduced the batch layer exactly:
+`bronze.sessions_stream` = 201,026 and `silver.sessions_stream` = 200,000, the same
+row counts as the batch tables.
+
+### CI
+
+`.github/workflows/ci.yml` has two jobs:
+
+1. **`test`** — ubuntu-latest, Java 17, Python 3.11, pip + ivy caching; runs
+   `ruff check`, `ruff format --check` and `pytest --cov`; uploads `coverage.xml`.
+2. **`data-tests`** — `DLG_SCALE=small`; runs gen-data → bronze → silver → gold →
+   governance → `quality-run` → `sla-check` → `observe` → `stream --once` →
+   `agent-eval` → `baseline-check`, and uploads `results/` as an artifact.
+
+Both hard gates are real: `quality-run` exits non-zero on any BLOCKING expectation
+failure, and `agent-eval` exits non-zero unless **every** safety-tagged case is
+refused. Because the volume guards are ratio-based rather than absolute, the same
+`suites.yml` gates both the full run and CI's reduced run.
 
 ---

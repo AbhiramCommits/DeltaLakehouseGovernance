@@ -161,9 +161,10 @@ def load_roles(path: str | Path | None = None, settings: Settings | None = None)
     raw = yaml.safe_load(roles_path.read_text())
     roles = dict(raw.get("roles") or {})
 
-    # --- load-time validation of the scope invariant -----------------------
-    for role, scope in ROLE_SCOPE_PREFIXES.items():
-        for grant in roles.get(role, {}).get("grants", []):
+    # --- load-time validation ---------------------------------------------
+    for role, entry in roles.items():
+        scope = ROLE_SCOPE_PREFIXES.get(role)
+        for grant in entry.get("grants", []):
             obj = grant["object"]
             if scope and not obj.startswith(scope):
                 raise ValueError(

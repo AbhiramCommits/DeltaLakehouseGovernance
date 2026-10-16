@@ -10,8 +10,8 @@ export PYTHONPATH := src
 SCALE   ?= full
 RESULTS := results
 
-.PHONY: help setup gen-data bronze silver gold stream quality governance \
-        agent-eval serve test lint baseline-update all clean
+.PHONY: help setup gen-data bronze silver gold stream stream-demo quality governance \
+        agent-eval serve test lint baseline-update baseline-check all clean
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -37,6 +37,9 @@ gold: ## Build the gold marts from silver
 
 stream: ## Run the incremental Structured Streaming ingest once (availableNow)
 	$(PY) -m dlg.cli stream --once
+
+stream-demo: ## Full streaming idempotency demonstration (new files, duplicates, replay)
+	bash scripts/stream_demo.sh
 
 quality: ## Run DQ expectations, SLA checks and observability snapshot
 	$(PY) -m dlg.cli quality-run
