@@ -287,12 +287,14 @@ GOLD_FCT_RETENTION_COHORT = StructType(
     [
         StructField("cohort_date", DateType(), False),
         StructField("cohort_size", LongType(), False),
-        StructField("d1_retained", LongType(), False),
-        StructField("d7_retained", LongType(), False),
-        StructField("d30_retained", LongType(), False),
-        StructField("d1_retention", DoubleType(), False),
-        StructField("d7_retention", DoubleType(), False),
-        StructField("d30_retention", DoubleType(), False),
+        StructField("d1_retained", LongType(), True),
+        StructField("d7_retained", LongType(), True),
+        StructField("d30_retained", LongType(), True),
+        StructField("d1_retention", DoubleType(), True),
+        StructField("d7_retention", DoubleType(), True),
+        StructField("d30_retention", DoubleType(), True),
+        StructField("is_matured_d7", BooleanType(), False),
+        StructField("is_matured_d30", BooleanType(), False),
     ]
 )
 

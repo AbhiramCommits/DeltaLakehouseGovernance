@@ -1,0 +1,64 @@
+# =============================================================================
+# DeltaLakehouseGovernance — role-to-grant matrix
+#
+# The Unity-Catalog-style analogue of GRANT statements. `object` is either a
+# fully qualified table/view name or a `<layer>.*` glob. `operations` is the set
+# of allowed verbs.
+#
+# Two invariants are enforced in code (src/dlg/governance/access.py), not just
+# documented here:
+#
+#   1. `agent_service` may read ONLY `secure.*` views. Any grant that would let
+#      it touch bronze/silver/gold directly is rejected when the file loads.
+#   2. No role except `admin` and `data_engineer` may write to bronze/silver.
+# =============================================================================
+
+version: 1
+
+roles:
+
+  admin:
+    description: "Platform owner. Break-glass access to everything."
+    grants:
+      - { object: "*", operations: [SELECT, INSERT, UPDATE, DELETE, MERGE, CREATE, DROP, ALTER] }
+
+  data_engineer:
+    description: "Builds and operates the medallion pipelines."
+    grants:
+      - { object: "bronze.*", operations: [SELECT, INSERT, UPDATE, DELETE, MERGE, CREATE, ALTER] }
+      - { object: "silver.*", operations: [SELECT, INSERT, UPDATE, DELETE, MERGE, CREATE, ALTER] }
+      - { object: "gold.*",   operations: [SELECT, CREATE, ALTER] }
+      - { object: "ops.*",    operations: [SELECT, INSERT, UPDATE, CREATE] }
+      - { object: "secure.*", operations: [SELECT, CREATE, ALTER] }
+
+  analyst:
+    description: "Product/gameplay analyst. Reads governed views only; never raw PII."
+    grants:
+      - { object: "secure.v_dim_player_analyst",  operations: [SELECT] }
+      - { object: "secure.v_fct_player_daily",    operations: [SELECT] }
+      - { object: "secure.v_monetization_daily",  operations: [SELECT] }
+      - { object: "secure.v_retention_cohort",    operations: [SELECT] }
+
+  regional_analyst_emea:
+    description: "EMEA regional analyst. Row-filtered to region = 'EMEA'."
+    grants:
+      - { object: "secure.v_dim_player_emea",         operations: [SELECT] }
+      - { object: "secure.v_fct_player_daily_emea",   operations: [SELECT] }
+      - { object: "secure.v_monetization_daily",      operations: [SELECT] }
+
+  marketing:
+    description: "Lifecycle marketing. Same masks as analyst, plus transaction detail."
+    grants:
+      - { object: "secure.v_dim_player_analyst",  operations: [SELECT] }
+      - { object: "secure.v_retention_cohort",    operations: [SELECT] }
+      - { object: "secure.v_purchases_analyst",   operations: [SELECT] }
+
+  agent_service:
+    description: >
+      The governed analytics agent. Read-only, and scoped to governed secure.*
+      views only — it can never see bronze, silver or raw gold.
+    grants:
+      - { object: "secure.v_dim_player_analyst",  operations: [SELECT] }
+      - { object: "secure.v_fct_player_daily",    operations: [SELECT] }
+      - { object: "secure.v_monetization_daily",  operations: [SELECT] }
+      - { object: "secure.v_retention_cohort",    operations: [SELECT] }

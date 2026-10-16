@@ -143,6 +143,181 @@ def demo_rollback_cmd(
     _write_json(json_out, report)
 
 
+# ======================================================================
+# Step 3 — gold marts + governance
+# ======================================================================
+
+
+@app.command("gold")
+def gold_cmd(
+    json_out: str = typer.Option(None, help="Write gold mart stats + headline metrics as JSON."),
+) -> None:
+    """Build the gold marts from the silver layer."""
+    from dlg.pipelines.gold import build_all, headline_metrics, print_report
+    from dlg.spark import get_spark
+
+    spark = get_spark("dlg-gold")
+    result = build_all(spark)
+    print_report(result)
+    payload = result.as_dict()
+    payload["headline_metrics"] = headline_metrics(spark)
+    _write_json(json_out, payload)
+
+
+@app.command("catalog-validate")
+def catalog_validate_cmd(
+    require_all: bool = typer.Option(
+        False, help="Fail if a catalog table is missing from the lake."
+    ),
+    json_out: str = typer.Option(None, help="Write the validation summary as JSON."),
+) -> None:
+    """Validate governance/catalog.yml against the live Delta schemas (drift detection)."""
+    from dlg.governance.catalog import catalog_summary, load_catalog, validate_catalog
+    from dlg.spark import get_spark
+
+    catalog = load_catalog()
+    report = validate_catalog(get_spark("dlg-catalog"), catalog, require_all=require_all)
+    typer.echo(report.render())
+    summary = catalog_summary(catalog)
+    summary.update(
+        {
+            "checked_tables": len(report.checked_tables),
+            "missing_tables": report.missing_tables,
+            "drift_issues": [str(i) for i in report.issues],
+            "ok": report.ok,
+        }
+    )
+    _write_json(json_out, summary)
+    if not report.ok:
+        raise typer.Exit(code=1)
+
+
+@app.command("lineage")
+def lineage_cmd(
+    json_out: str = typer.Option(None, help="Write lineage counts as JSON."),
+) -> None:
+    """Build table + column lineage and emit docs/lineage.md and results/lineage_edges.json."""
+    from dlg.governance.lineage import build_lineage, write_lineage_artifacts
+
+    graph = build_lineage()
+    paths = write_lineage_artifacts(graph)
+    payload = graph.to_dict()["counts"]
+    payload["artifacts"] = paths
+    for name, path in paths.items():
+        typer.echo(f"wrote {name}: {path}")
+    typer.echo(
+        f"lineage: {payload['nodes']} nodes, {payload['table_edges']} table edges, "
+        f"{payload['column_edges']} column edges"
+    )
+    _write_json(json_out, payload)
+
+
+@app.command("impact")
+def impact_cmd(
+    column: str = typer.Argument(..., help="Qualified column, e.g. silver.sessions.player_email"),
+) -> None:
+    """Print everything downstream of a column (change impact analysis)."""
+    from dlg.governance.lineage import build_lineage, impact
+
+    graph = build_lineage()
+    downstream = impact(graph, column)
+    if not downstream:
+        typer.echo(f"no registered downstream columns depend on {column}")
+        return
+    tables = sorted({d.rsplit(".", 1)[0] for d in downstream})
+    typer.echo(
+        f"{column} impacts {len(downstream)} downstream columns across {len(tables)} tables:"
+    )
+    for column_name in downstream:
+        typer.echo(f"  {column_name}")
+
+
+@app.command("policies-apply")
+def policies_apply_cmd(
+    json_out: str = typer.Option(None, help="Write the policy report as JSON."),
+) -> None:
+    """Create the governed secure.* views (PII masking + region row filters)."""
+    from dlg.governance.policies import apply_policies, masking_proof, region_filter_proof
+    from dlg.spark import get_spark
+
+    spark = get_spark("dlg-policies")
+    report = apply_policies(spark)
+    payload = report.as_dict()
+    payload["masking_proof"] = masking_proof(spark)
+    payload["region_filter_proof"] = region_filter_proof(spark)
+    for view in report.views_created:
+        typer.echo(f"created view {view}")
+    typer.echo(
+        f"\nmasked PII columns ({len(report.masked_pii_columns)}): "
+        + ", ".join(report.masked_pii_columns)
+    )
+    typer.echo(f"row-filtered views: {', '.join(report.row_filtered_views)}")
+    typer.echo(f"age buckets anchored on reference year {report.reference_year}")
+    typer.echo("\nraw vs governed (same player):")
+    typer.echo(f"  raw      : {payload['masking_proof']['raw']}")
+    typer.echo(f"  governed : {payload['masking_proof']['governed']}")
+    typer.echo(f"  row filter: {payload['region_filter_proof']}")
+    _write_json(json_out, payload)
+
+
+@app.command("access-matrix")
+def access_matrix_cmd(
+    operation: str = typer.Option("SELECT", help="Operation to display in the grid."),
+    json_out: str = typer.Option(None, help="Write the full allow/deny cell counts as JSON."),
+) -> None:
+    """Print the role-to-grant matrix and the allow/deny cell counts."""
+    from tabulate import tabulate
+
+    from dlg.governance.access import ALL_OPERATIONS, grant_totals, load_roles, matrix_table
+    from dlg.governance.catalog import load_catalog
+    from dlg.governance.policies import GOVERNED_VIEWS
+
+    catalog = load_catalog()
+    objects = list(catalog.tables) + [f"secure.{v}" for v in GOVERNED_VIEWS]
+    matrix = load_roles()
+
+    rows = matrix_table(objects, operation=operation)
+    role_names = matrix.role_names
+    # transpose: one row per object, one column per role
+    grid = [
+        [obj] + [rows[j][i + 1] for j in range(len(role_names))] for i, obj in enumerate(objects)
+    ]
+    headers = ["object"] + role_names
+    typer.echo(f"# Access matrix — operation = {operation}")
+    typer.echo(tabulate(grid, headers=headers, tablefmt="github"))
+
+    totals = grant_totals(objects)
+    typer.echo(
+        f"\nfull grid ({len(matrix.role_names)} roles x {len(objects)} objects x "
+        f"{len(ALL_OPERATIONS)} operations = {totals['total_cells']} cells): "
+        f"{totals['allow_cells']} allow, {totals['deny_cells']} deny"
+    )
+    typer.echo("\nroles:")
+    for role in matrix.role_names:
+        grants = matrix.grants(role)
+        typer.echo(f"  {role}: {len(grants)} grant(s) — {matrix.description(role).splitlines()[0]}")
+
+    # spot-check the headline guarantee
+    from dlg.governance.access import check_access
+
+    for obj in (
+        "bronze.sessions",
+        "silver.sessions",
+        "gold.dim_player",
+        "secure.v_dim_player_analyst",
+    ):
+        decision = check_access("agent_service", obj, "SELECT")
+        typer.echo(
+            f"  agent_service SELECT {obj}: {'allow' if decision.allowed else 'deny'} ({decision.reason_code})"
+        )
+
+    payload = dict(totals)
+    payload["objects"] = objects
+    payload["roles"] = matrix.role_names
+    payload["operations"] = list(ALL_OPERATIONS)
+    _write_json(json_out, payload)
+
+
 def main() -> None:
     app()
 

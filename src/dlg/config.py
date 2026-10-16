@@ -68,7 +68,13 @@ class Settings(BaseSettings):
     n_sessions: int = 200_000
     n_match_events: int = 600_000
     n_purchases: int = 40_000
+    #: Number of daily install cohorts (players install on days 0..n_days-1).
     n_days: int = 30
+    #: Extra days of activity generated *after* the last install cohort.
+    #: A D30 retention figure needs at least 31 observed days, so the default
+    #: keeps a 30-day cohort window plus a 30-day observation tail, which lets
+    #: every cohort mature for D1, D7 and D30.
+    observation_days: int = 30
     #: Number of landing files each dataset is split across (micro-batch size).
     files_per_dataset: int = 4
 
@@ -91,6 +97,11 @@ class Settings(BaseSettings):
     @property
     def scale_factor(self) -> float:
         return SCALE_FACTORS[self.scale]
+
+    @property
+    def total_days(self) -> int:
+        """Full observation window: install cohorts + the maturation tail."""
+        return self.n_days + self.observation_days
 
     @property
     def is_remote_lake(self) -> bool:

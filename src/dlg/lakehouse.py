@@ -193,10 +193,16 @@ def merge_upsert(
 
 
 def overwrite_delta(spark: SparkSession, name: str, df: DataFrame) -> None:
-    """Full overwrite (used by gold marts, which are recomputed each run)."""
+    """Full overwrite of an existing table (used by the recomputed gold marts).
+
+    The write goes straight to the table's ``LOCATION`` instead of through
+    ``saveAsTable`` so no metastore ``ALTER TABLE`` is attempted; the pre-created
+    table schema (and therefore schema enforcement) still applies.
+    """
     ref = TableRef(name)
-    writer = df.write.format("delta").mode("overwrite").option("overwriteSchema", "false")
-    writer.option("path", ref.path).saveAsTable(name)
+    df.write.format("delta").mode("overwrite").option("overwriteSchema", "false").option(
+        "path", ref.path
+    ).save()
 
 
 # --------------------------------------------------------------------------

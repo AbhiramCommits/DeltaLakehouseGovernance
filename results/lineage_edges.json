@@ -1,0 +1,897 @@
+{
+  "nodes": [
+    {
+      "id": "bronze.sessions",
+      "layer": "bronze",
+      "domain": "gameplay",
+      "classification": "INTERNAL",
+      "owner": "data-engineering@studio.example",
+      "columns": 21,
+      "kind": "table"
+    },
+    {
+      "id": "bronze.match_events",
+      "layer": "bronze",
+      "domain": "gameplay",
+      "classification": "INTERNAL",
+      "owner": "data-engineering@studio.example",
+      "columns": 17,
+      "kind": "table"
+    },
+    {
+      "id": "bronze.purchases",
+      "layer": "bronze",
+      "domain": "monetization",
+      "classification": "FINANCIAL",
+      "owner": "data-engineering@studio.example",
+      "columns": 15,
+      "kind": "table"
+    },
+    {
+      "id": "bronze.quarantine",
+      "layer": "bronze",
+      "domain": "platform",
+      "classification": "INTERNAL",
+      "owner": "data-engineering@studio.example",
+      "columns": 8,
+      "kind": "table"
+    },
+    {
+      "id": "silver.sessions",
+      "layer": "silver",
+      "domain": "gameplay",
+      "classification": "PII",
+      "owner": "analytics-engineering@studio.example",
+      "columns": 22,
+      "kind": "table"
+    },
+    {
+      "id": "silver.match_events",
+      "layer": "silver",
+      "domain": "gameplay",
+      "classification": "INTERNAL",
+      "owner": "analytics-engineering@studio.example",
+      "columns": 17,
+      "kind": "table"
+    },
+    {
+      "id": "silver.purchases",
+      "layer": "silver",
+      "domain": "monetization",
+      "classification": "FINANCIAL",
+      "owner": "analytics-engineering@studio.example",
+      "columns": 16,
+      "kind": "table"
+    },
+    {
+      "id": "silver.quarantine",
+      "layer": "silver",
+      "domain": "platform",
+      "classification": "INTERNAL",
+      "owner": "analytics-engineering@studio.example",
+      "columns": 8,
+      "kind": "table"
+    },
+    {
+      "id": "gold.fct_player_daily",
+      "layer": "gold",
+      "domain": "gameplay",
+      "classification": "INTERNAL",
+      "owner": "analytics-engineering@studio.example",
+      "columns": 10,
+      "kind": "table"
+    },
+    {
+      "id": "gold.dim_player",
+      "layer": "gold",
+      "domain": "gameplay",
+      "classification": "PII",
+      "owner": "analytics-engineering@studio.example",
+      "columns": 10,
+      "kind": "table"
+    },
+    {
+      "id": "gold.fct_monetization_daily",
+      "layer": "gold",
+      "domain": "monetization",
+      "classification": "FINANCIAL",
+      "owner": "finance-analytics@studio.example",
+      "columns": 8,
+      "kind": "table"
+    },
+    {
+      "id": "gold.fct_retention_cohort",
+      "layer": "gold",
+      "domain": "gameplay",
+      "classification": "INTERNAL",
+      "owner": "product-analytics@studio.example",
+      "columns": 10,
+      "kind": "table"
+    },
+    {
+      "id": "landing.bronze",
+      "layer": "landing",
+      "domain": "platform",
+      "classification": "INTERNAL",
+      "owner": "data-engineering@studio.example",
+      "columns": 0,
+      "kind": "source"
+    },
+    {
+      "id": "secure.v_dim_player_analyst",
+      "layer": "secure",
+      "domain": "platform",
+      "classification": "INTERNAL",
+      "owner": "governance@studio.example",
+      "columns": 13,
+      "kind": "view"
+    },
+    {
+      "id": "secure.v_dim_player_emea",
+      "layer": "secure",
+      "domain": "platform",
+      "classification": "INTERNAL",
+      "owner": "governance@studio.example",
+      "columns": 8,
+      "kind": "view"
+    },
+    {
+      "id": "secure.v_fct_player_daily",
+      "layer": "secure",
+      "domain": "platform",
+      "classification": "INTERNAL",
+      "owner": "governance@studio.example",
+      "columns": 7,
+      "kind": "view"
+    },
+    {
+      "id": "secure.v_fct_player_daily_emea",
+      "layer": "secure",
+      "domain": "platform",
+      "classification": "INTERNAL",
+      "owner": "governance@studio.example",
+      "columns": 4,
+      "kind": "view"
+    },
+    {
+      "id": "secure.v_monetization_daily",
+      "layer": "secure",
+      "domain": "platform",
+      "classification": "INTERNAL",
+      "owner": "governance@studio.example",
+      "columns": 6,
+      "kind": "view"
+    },
+    {
+      "id": "secure.v_retention_cohort",
+      "layer": "secure",
+      "domain": "platform",
+      "classification": "INTERNAL",
+      "owner": "governance@studio.example",
+      "columns": 5,
+      "kind": "view"
+    },
+    {
+      "id": "secure.v_purchases_analyst",
+      "layer": "secure",
+      "domain": "platform",
+      "classification": "INTERNAL",
+      "owner": "governance@studio.example",
+      "columns": 5,
+      "kind": "view"
+    }
+  ],
+  "table_edges": [
+    {
+      "source": "landing.bronze",
+      "target": "bronze.sessions"
+    },
+    {
+      "source": "landing.bronze",
+      "target": "bronze.match_events"
+    },
+    {
+      "source": "landing.bronze",
+      "target": "bronze.purchases"
+    },
+    {
+      "source": "landing.bronze",
+      "target": "bronze.quarantine"
+    },
+    {
+      "source": "bronze.sessions",
+      "target": "silver.sessions"
+    },
+    {
+      "source": "bronze.match_events",
+      "target": "silver.match_events"
+    },
+    {
+      "source": "bronze.purchases",
+      "target": "silver.purchases"
+    },
+    {
+      "source": "silver.sessions",
+      "target": "silver.purchases"
+    },
+    {
+      "source": "bronze.sessions",
+      "target": "silver.quarantine"
+    },
+    {
+      "source": "bronze.match_events",
+      "target": "silver.quarantine"
+    },
+    {
+      "source": "bronze.purchases",
+      "target": "silver.quarantine"
+    },
+    {
+      "source": "silver.sessions",
+      "target": "gold.fct_player_daily"
+    },
+    {
+      "source": "silver.purchases",
+      "target": "gold.fct_player_daily"
+    },
+    {
+      "source": "silver.sessions",
+      "target": "gold.dim_player"
+    },
+    {
+      "source": "silver.purchases",
+      "target": "gold.dim_player"
+    },
+    {
+      "source": "silver.sessions",
+      "target": "gold.fct_monetization_daily"
+    },
+    {
+      "source": "silver.purchases",
+      "target": "gold.fct_monetization_daily"
+    },
+    {
+      "source": "silver.sessions",
+      "target": "gold.fct_retention_cohort"
+    },
+    {
+      "source": "gold.dim_player",
+      "target": "secure.v_dim_player_analyst"
+    },
+    {
+      "source": "silver.sessions",
+      "target": "secure.v_dim_player_analyst"
+    },
+    {
+      "source": "gold.dim_player",
+      "target": "secure.v_dim_player_emea"
+    },
+    {
+      "source": "silver.sessions",
+      "target": "secure.v_dim_player_emea"
+    },
+    {
+      "source": "gold.fct_player_daily",
+      "target": "secure.v_fct_player_daily"
+    },
+    {
+      "source": "gold.fct_player_daily",
+      "target": "secure.v_fct_player_daily_emea"
+    },
+    {
+      "source": "gold.fct_monetization_daily",
+      "target": "secure.v_monetization_daily"
+    },
+    {
+      "source": "gold.fct_retention_cohort",
+      "target": "secure.v_retention_cohort"
+    },
+    {
+      "source": "silver.purchases",
+      "target": "secure.v_purchases_analyst"
+    }
+  ],
+  "column_edges": [
+    {
+      "source": "gold.dim_player.player_id",
+      "target": "secure.v_dim_player_analyst.player_id"
+    },
+    {
+      "source": "gold.dim_player.first_seen",
+      "target": "secure.v_dim_player_analyst.first_seen"
+    },
+    {
+      "source": "gold.dim_player.last_seen",
+      "target": "secure.v_dim_player_analyst.last_seen"
+    },
+    {
+      "source": "gold.dim_player.region",
+      "target": "secure.v_dim_player_analyst.region"
+    },
+    {
+      "source": "silver.sessions.country",
+      "target": "secure.v_dim_player_analyst.country"
+    },
+    {
+      "source": "silver.sessions.player_email",
+      "target": "secure.v_dim_player_analyst.player_email"
+    },
+    {
+      "source": "silver.sessions.player_ip",
+      "target": "secure.v_dim_player_analyst.player_ip"
+    },
+    {
+      "source": "silver.sessions.birth_year",
+      "target": "secure.v_dim_player_analyst.age_bucket"
+    },
+    {
+      "source": "gold.dim_player.lifetime_spend",
+      "target": "secure.v_dim_player_analyst.lifetime_spend"
+    },
+    {
+      "source": "gold.dim_player.lifetime_sessions",
+      "target": "secure.v_dim_player_analyst.lifetime_sessions"
+    },
+    {
+      "source": "gold.dim_player.lifetime_playtime_minutes",
+      "target": "secure.v_dim_player_analyst.lifetime_playtime_minutes"
+    },
+    {
+      "source": "gold.dim_player.days_since_last_seen",
+      "target": "secure.v_dim_player_analyst.days_since_last_seen"
+    },
+    {
+      "source": "gold.dim_player.churn_flag",
+      "target": "secure.v_dim_player_analyst.churn_flag"
+    },
+    {
+      "source": "gold.dim_player.player_id",
+      "target": "secure.v_dim_player_emea.player_id"
+    },
+    {
+      "source": "gold.dim_player.region",
+      "target": "secure.v_dim_player_emea.region"
+    },
+    {
+      "source": "silver.sessions.country",
+      "target": "secure.v_dim_player_emea.country"
+    },
+    {
+      "source": "silver.sessions.player_email",
+      "target": "secure.v_dim_player_emea.player_email"
+    },
+    {
+      "source": "silver.sessions.player_ip",
+      "target": "secure.v_dim_player_emea.player_ip"
+    },
+    {
+      "source": "silver.sessions.birth_year",
+      "target": "secure.v_dim_player_emea.age_bucket"
+    },
+    {
+      "source": "gold.dim_player.lifetime_spend",
+      "target": "secure.v_dim_player_emea.lifetime_spend"
+    },
+    {
+      "source": "gold.dim_player.churn_flag",
+      "target": "secure.v_dim_player_emea.churn_flag"
+    },
+    {
+      "source": "gold.fct_player_daily.event_date",
+      "target": "secure.v_fct_player_daily.event_date"
+    },
+    {
+      "source": "gold.fct_player_daily.player_id",
+      "target": "secure.v_fct_player_daily.player_id"
+    },
+    {
+      "source": "gold.fct_player_daily.country",
+      "target": "secure.v_fct_player_daily.country"
+    },
+    {
+      "source": "gold.fct_player_daily.region",
+      "target": "secure.v_fct_player_daily.region"
+    },
+    {
+      "source": "gold.fct_player_daily.sessions",
+      "target": "secure.v_fct_player_daily.sessions"
+    },
+    {
+      "source": "gold.fct_player_daily.playtime_minutes",
+      "target": "secure.v_fct_player_daily.playtime_minutes"
+    },
+    {
+      "source": "gold.fct_player_daily.spend_usd",
+      "target": "secure.v_fct_player_daily.spend_usd"
+    },
+    {
+      "source": "gold.fct_player_daily.event_date",
+      "target": "secure.v_fct_player_daily_emea.event_date"
+    },
+    {
+      "source": "gold.fct_player_daily.player_id",
+      "target": "secure.v_fct_player_daily_emea.player_id"
+    },
+    {
+      "source": "gold.fct_player_daily.region",
+      "target": "secure.v_fct_player_daily_emea.region"
+    },
+    {
+      "source": "gold.fct_player_daily.spend_usd",
+      "target": "secure.v_fct_player_daily_emea.spend_usd"
+    },
+    {
+      "source": "gold.fct_monetization_daily.event_date",
+      "target": "secure.v_monetization_daily.event_date"
+    },
+    {
+      "source": "gold.fct_monetization_daily.dau",
+      "target": "secure.v_monetization_daily.dau"
+    },
+    {
+      "source": "gold.fct_monetization_daily.paying_users",
+      "target": "secure.v_monetization_daily.paying_users"
+    },
+    {
+      "source": "gold.fct_monetization_daily.revenue_usd",
+      "target": "secure.v_monetization_daily.revenue_usd"
+    },
+    {
+      "source": "gold.fct_monetization_daily.arpdau",
+      "target": "secure.v_monetization_daily.arpdau"
+    },
+    {
+      "source": "gold.fct_monetization_daily.conversion_rate",
+      "target": "secure.v_monetization_daily.conversion_rate"
+    },
+    {
+      "source": "gold.fct_retention_cohort.cohort_date",
+      "target": "secure.v_retention_cohort.cohort_date"
+    },
+    {
+      "source": "gold.fct_retention_cohort.cohort_size",
+      "target": "secure.v_retention_cohort.cohort_size"
+    },
+    {
+      "source": "gold.fct_retention_cohort.d1_retention",
+      "target": "secure.v_retention_cohort.d1_retention"
+    },
+    {
+      "source": "gold.fct_retention_cohort.d7_retention",
+      "target": "secure.v_retention_cohort.d7_retention"
+    },
+    {
+      "source": "gold.fct_retention_cohort.d30_retention",
+      "target": "secure.v_retention_cohort.d30_retention"
+    },
+    {
+      "source": "silver.purchases.purchase_id",
+      "target": "secure.v_purchases_analyst.purchase_id"
+    },
+    {
+      "source": "silver.purchases.player_id",
+      "target": "secure.v_purchases_analyst.player_id"
+    },
+    {
+      "source": "silver.purchases.price_usd",
+      "target": "secure.v_purchases_analyst.price_usd"
+    },
+    {
+      "source": "silver.purchases.quantity",
+      "target": "secure.v_purchases_analyst.quantity"
+    },
+    {
+      "source": "silver.purchases.payment_method",
+      "target": "secure.v_purchases_analyst.payment_method"
+    },
+    {
+      "source": "bronze.sessions.player_email",
+      "target": "silver.sessions.player_email"
+    },
+    {
+      "source": "bronze.sessions.player_ip",
+      "target": "silver.sessions.player_ip"
+    },
+    {
+      "source": "bronze.sessions.country",
+      "target": "silver.sessions.country"
+    },
+    {
+      "source": "bronze.sessions.region",
+      "target": "silver.sessions.region"
+    },
+    {
+      "source": "bronze.sessions.birth_year",
+      "target": "silver.sessions.birth_year"
+    },
+    {
+      "source": "bronze.sessions.device",
+      "target": "silver.sessions.device"
+    },
+    {
+      "source": "bronze.sessions.platform",
+      "target": "silver.sessions.platform"
+    },
+    {
+      "source": "bronze.sessions.app_version",
+      "target": "silver.sessions.app_version"
+    },
+    {
+      "source": "bronze.sessions.session_start_ts",
+      "target": "silver.sessions.session_start_ts"
+    },
+    {
+      "source": "bronze.sessions.session_end_ts",
+      "target": "silver.sessions.session_end_ts"
+    },
+    {
+      "source": "bronze.sessions.session_start_ts",
+      "target": "silver.sessions.event_ts"
+    },
+    {
+      "source": "silver.sessions.event_ts",
+      "target": "silver.sessions.event_date"
+    },
+    {
+      "source": "bronze.sessions.duration_minutes",
+      "target": "silver.sessions.duration_minutes"
+    },
+    {
+      "source": "bronze.sessions.matches_played",
+      "target": "silver.sessions.matches_played"
+    },
+    {
+      "source": "bronze.sessions.kills",
+      "target": "silver.sessions.kills"
+    },
+    {
+      "source": "bronze.sessions.deaths",
+      "target": "silver.sessions.deaths"
+    },
+    {
+      "source": "bronze.sessions.store_views",
+      "target": "silver.sessions.store_views"
+    },
+    {
+      "source": "bronze.sessions._record_hash",
+      "target": "silver.sessions._record_hash"
+    },
+    {
+      "source": "bronze.sessions._ingest_ts",
+      "target": "silver.sessions._ingest_ts"
+    },
+    {
+      "source": "bronze.match_events.session_id",
+      "target": "silver.match_events.session_id"
+    },
+    {
+      "source": "bronze.match_events.player_id",
+      "target": "silver.match_events.player_id"
+    },
+    {
+      "source": "bronze.match_events.match_id",
+      "target": "silver.match_events.match_id"
+    },
+    {
+      "source": "bronze.match_events.event_type",
+      "target": "silver.match_events.event_type"
+    },
+    {
+      "source": "bronze.match_events.event_ts",
+      "target": "silver.match_events.event_ts"
+    },
+    {
+      "source": "silver.match_events.event_ts",
+      "target": "silver.match_events.event_date"
+    },
+    {
+      "source": "bronze.match_events.map_id",
+      "target": "silver.match_events.map_id"
+    },
+    {
+      "source": "bronze.match_events.mode",
+      "target": "silver.match_events.mode"
+    },
+    {
+      "source": "bronze.match_events.kills",
+      "target": "silver.match_events.kills"
+    },
+    {
+      "source": "bronze.match_events.deaths",
+      "target": "silver.match_events.deaths"
+    },
+    {
+      "source": "bronze.match_events.damage_dealt",
+      "target": "silver.match_events.damage_dealt"
+    },
+    {
+      "source": "bronze.match_events.ping_ms",
+      "target": "silver.match_events.ping_ms"
+    },
+    {
+      "source": "bronze.match_events.is_bot",
+      "target": "silver.match_events.is_bot"
+    },
+    {
+      "source": "bronze.match_events._record_hash",
+      "target": "silver.match_events._record_hash"
+    },
+    {
+      "source": "bronze.match_events._ingest_ts",
+      "target": "silver.match_events._ingest_ts"
+    },
+    {
+      "source": "bronze.purchases.session_id",
+      "target": "silver.purchases.session_id"
+    },
+    {
+      "source": "bronze.purchases.player_id",
+      "target": "silver.purchases.player_id"
+    },
+    {
+      "source": "bronze.purchases.sku",
+      "target": "silver.purchases.sku"
+    },
+    {
+      "source": "bronze.purchases.item_name",
+      "target": "silver.purchases.item_name"
+    },
+    {
+      "source": "bronze.purchases.category",
+      "target": "silver.purchases.category"
+    },
+    {
+      "source": "bronze.purchases.price_usd",
+      "target": "silver.purchases.price_usd"
+    },
+    {
+      "source": "bronze.purchases.currency",
+      "target": "silver.purchases.currency"
+    },
+    {
+      "source": "bronze.purchases.quantity",
+      "target": "silver.purchases.quantity"
+    },
+    {
+      "source": "bronze.purchases.purchase_ts",
+      "target": "silver.purchases.purchase_ts"
+    },
+    {
+      "source": "bronze.purchases.purchase_ts",
+      "target": "silver.purchases.event_ts"
+    },
+    {
+      "source": "silver.purchases.event_ts",
+      "target": "silver.purchases.event_date"
+    },
+    {
+      "source": "bronze.purchases.payment_method",
+      "target": "silver.purchases.payment_method"
+    },
+    {
+      "source": "bronze.purchases._record_hash",
+      "target": "silver.purchases._record_hash"
+    },
+    {
+      "source": "bronze.purchases._ingest_ts",
+      "target": "silver.purchases._ingest_ts"
+    },
+    {
+      "source": "silver.sessions.event_date",
+      "target": "gold.fct_player_daily.event_date"
+    },
+    {
+      "source": "silver.purchases.event_date",
+      "target": "gold.fct_player_daily.event_date"
+    },
+    {
+      "source": "silver.sessions.player_id",
+      "target": "gold.fct_player_daily.player_id"
+    },
+    {
+      "source": "silver.purchases.player_id",
+      "target": "gold.fct_player_daily.player_id"
+    },
+    {
+      "source": "silver.sessions.country",
+      "target": "gold.fct_player_daily.country"
+    },
+    {
+      "source": "silver.sessions.region",
+      "target": "gold.fct_player_daily.region"
+    },
+    {
+      "source": "silver.sessions.session_id",
+      "target": "gold.fct_player_daily.sessions"
+    },
+    {
+      "source": "silver.sessions.duration_minutes",
+      "target": "gold.fct_player_daily.playtime_minutes"
+    },
+    {
+      "source": "silver.sessions.matches_played",
+      "target": "gold.fct_player_daily.matches"
+    },
+    {
+      "source": "silver.sessions.kills",
+      "target": "gold.fct_player_daily.kills"
+    },
+    {
+      "source": "silver.sessions.deaths",
+      "target": "gold.fct_player_daily.deaths"
+    },
+    {
+      "source": "silver.purchases.price_usd",
+      "target": "gold.fct_player_daily.spend_usd"
+    },
+    {
+      "source": "silver.purchases.quantity",
+      "target": "gold.fct_player_daily.spend_usd"
+    },
+    {
+      "source": "silver.sessions.player_id",
+      "target": "gold.dim_player.player_id"
+    },
+    {
+      "source": "silver.sessions.session_start_ts",
+      "target": "gold.dim_player.first_seen"
+    },
+    {
+      "source": "silver.sessions.session_start_ts",
+      "target": "gold.dim_player.last_seen"
+    },
+    {
+      "source": "silver.sessions.country",
+      "target": "gold.dim_player.country"
+    },
+    {
+      "source": "silver.sessions.region",
+      "target": "gold.dim_player.region"
+    },
+    {
+      "source": "silver.purchases.price_usd",
+      "target": "gold.dim_player.lifetime_spend"
+    },
+    {
+      "source": "silver.purchases.quantity",
+      "target": "gold.dim_player.lifetime_spend"
+    },
+    {
+      "source": "silver.sessions.session_id",
+      "target": "gold.dim_player.lifetime_sessions"
+    },
+    {
+      "source": "silver.sessions.duration_minutes",
+      "target": "gold.dim_player.lifetime_playtime_minutes"
+    },
+    {
+      "source": "silver.sessions.event_date",
+      "target": "gold.dim_player.days_since_last_seen"
+    },
+    {
+      "source": "gold.dim_player.days_since_last_seen",
+      "target": "gold.dim_player.churn_flag"
+    },
+    {
+      "source": "silver.sessions.event_date",
+      "target": "gold.fct_monetization_daily.event_date"
+    },
+    {
+      "source": "silver.purchases.event_date",
+      "target": "gold.fct_monetization_daily.event_date"
+    },
+    {
+      "source": "silver.sessions.player_id",
+      "target": "gold.fct_monetization_daily.dau"
+    },
+    {
+      "source": "silver.purchases.player_id",
+      "target": "gold.fct_monetization_daily.paying_users"
+    },
+    {
+      "source": "silver.purchases.price_usd",
+      "target": "gold.fct_monetization_daily.revenue_usd"
+    },
+    {
+      "source": "silver.purchases.quantity",
+      "target": "gold.fct_monetization_daily.revenue_usd"
+    },
+    {
+      "source": "silver.purchases.price_usd",
+      "target": "gold.fct_monetization_daily.arpdau"
+    },
+    {
+      "source": "silver.sessions.player_id",
+      "target": "gold.fct_monetization_daily.arpdau"
+    },
+    {
+      "source": "silver.purchases.player_id",
+      "target": "gold.fct_monetization_daily.conversion_rate"
+    },
+    {
+      "source": "silver.sessions.player_id",
+      "target": "gold.fct_monetization_daily.conversion_rate"
+    },
+    {
+      "source": "silver.sessions.session_id",
+      "target": "gold.fct_monetization_daily.sessions"
+    },
+    {
+      "source": "silver.purchases.purchase_id",
+      "target": "gold.fct_monetization_daily.purchases"
+    },
+    {
+      "source": "silver.sessions.event_date",
+      "target": "gold.fct_retention_cohort.cohort_date"
+    },
+    {
+      "source": "silver.sessions.player_id",
+      "target": "gold.fct_retention_cohort.cohort_date"
+    },
+    {
+      "source": "silver.sessions.player_id",
+      "target": "gold.fct_retention_cohort.cohort_size"
+    },
+    {
+      "source": "silver.sessions.player_id",
+      "target": "gold.fct_retention_cohort.d1_retained"
+    },
+    {
+      "source": "silver.sessions.event_date",
+      "target": "gold.fct_retention_cohort.d1_retained"
+    },
+    {
+      "source": "silver.sessions.player_id",
+      "target": "gold.fct_retention_cohort.d7_retained"
+    },
+    {
+      "source": "silver.sessions.event_date",
+      "target": "gold.fct_retention_cohort.d7_retained"
+    },
+    {
+      "source": "silver.sessions.player_id",
+      "target": "gold.fct_retention_cohort.d30_retained"
+    },
+    {
+      "source": "silver.sessions.event_date",
+      "target": "gold.fct_retention_cohort.d30_retained"
+    },
+    {
+      "source": "gold.fct_retention_cohort.d1_retained",
+      "target": "gold.fct_retention_cohort.d1_retention"
+    },
+    {
+      "source": "gold.fct_retention_cohort.cohort_size",
+      "target": "gold.fct_retention_cohort.d1_retention"
+    },
+    {
+      "source": "gold.fct_retention_cohort.d7_retained",
+      "target": "gold.fct_retention_cohort.d7_retention"
+    },
+    {
+      "source": "gold.fct_retention_cohort.cohort_size",
+      "target": "gold.fct_retention_cohort.d7_retention"
+    },
+    {
+      "source": "gold.fct_retention_cohort.d30_retained",
+      "target": "gold.fct_retention_cohort.d30_retention"
+    },
+    {
+      "source": "gold.fct_retention_cohort.cohort_size",
+      "target": "gold.fct_retention_cohort.d30_retention"
+    },
+    {
+      "source": "silver.sessions.event_date",
+      "target": "gold.fct_retention_cohort.is_matured_d7"
+    },
+    {
+      "source": "silver.sessions.event_date",
+      "target": "gold.fct_retention_cohort.is_matured_d30"
+    }
+  ],
+  "counts": {
+    "nodes": 20,
+    "table_edges": 27,
+    "column_edges": 149
+  }
+}

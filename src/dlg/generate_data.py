@@ -120,6 +120,17 @@ LAST_NAMES = [
 ]
 EMAIL_DOMAINS = ["example.com", "mail.example.net", "players.example.org"]
 
+# --------------------------------------------------------------------------
+# Engagement model (drives the retention curve)
+# --------------------------------------------------------------------------
+
+#: Share of players that stick around for weeks rather than days.
+CORE_FRACTION = 0.35
+#: Daily survival probability for a core player (~29% still active at D30).
+CORE_SURVIVAL = 0.96
+#: Daily survival probability for a casual player (churns within a day or two).
+CASUAL_SURVIVAL = 0.20
+
 
 # --------------------------------------------------------------------------
 # Defect accounting
@@ -270,7 +281,9 @@ class Generator:
             email = f"{first}.{last}{i + 1}@{self.rng.choice(EMAIL_DOMAINS)}"
             ip = ".".join(str(self.rng.randint(1, 254)) for _ in range(4))
             birth_year = self.rng.randint(1985, 2012)
-            install_offset = self.rng.randint(0, max(0, self.settings.n_days - 8))
+            # install cohorts span days 0..n_days-1; activity is generated over the
+            # full observation window so retention cohorts actually mature
+            install_offset = self.rng.randint(0, max(0, self.settings.n_days - 1))
             self.players.append(
                 {
                     "player_id": pid,
@@ -322,39 +335,61 @@ class Generator:
     def _player_day_plan(self, n_sessions: int) -> list[tuple[dict, int]]:
         """Deterministic list of ``(player, day_offset)`` pairs, one per session.
 
-        Two properties matter downstream:
+        Engagement is modelled with a two-tier survival curve, which is what makes
+        the retention numbers behave like a real live-service game instead of a
+        flat geometric decay:
 
-        * **full player coverage** -- every generated player gets at least one
-          session, so ``silver.purchases`` -> ``silver.sessions`` referential
-          integrity is a meaningful check rather than a 20% rejection rate;
+        * a **core** share of players stick around (``P(active on day n)`` ≈
+          ``CORE_SURVIVAL ** n``), producing a long tail that is still active at
+          D30;
+        * the rest are **casual** and churn within a day or two.
+
+        Two invariants matter downstream:
+
+        * **full player coverage** -- every generated player keeps a session on
+          their install day, so ``cohort_size`` equals the player count and
+          ``silver.purchases`` -> ``silver.sessions`` referential integrity is a
+          meaningful check;
         * **unique ``(player_id, session_id)`` pairs** -- so the only duplicate
-          business keys in the data are the ones deliberately injected.
+          business keys downstream are the injected ones.
+
+        Candidate days are generated first and then deterministically trimmed to
+        exactly ``n_sessions``, keeping every install-day anchor.
         """
         rng = self.rng
-        max_day = self.settings.n_days - 1
-        plan: list[tuple[dict, int]] = []
-        seen: set[tuple[str, int]] = set()
+        max_day = self.settings.total_days - 1
+        anchors: list[tuple[dict, int]] = []
+        extras: list[tuple[dict, int]] = []
 
-        for player in self.players[:n_sessions]:
-            day = min(player["install_day"], max_day)
-            seen.add((player["player_id"], day))
-            plan.append((player, day))
-
-        attempts = 0
-        limit = n_sessions * 60
-        while len(plan) < n_sessions and attempts < limit:
-            attempts += 1
-            player = rng.choice(self.players)
+        for player in self.players:
             install = min(player["install_day"], max_day)
-            # Heavy-tailed engagement: many single-day players, a long tail.
-            span = min(1 + int(rng.expovariate(0.22)), max_day - install + 1)
-            day = install + rng.randrange(max(1, span))
-            key = (player["player_id"], day)
-            if key in seen:
-                continue
-            seen.add(key)
-            plan.append((player, day))
+            anchors.append((player, install))
+            survival = CORE_SURVIVAL if rng.random() < CORE_FRACTION else CASUAL_SURVIVAL
+            p = survival
+            day = install + 1
+            while day <= max_day:
+                if rng.random() < p:
+                    extras.append((player, day))
+                p *= survival
+                day += 1
 
+        rng.shuffle(extras)
+        n_extra = max(0, n_sessions - len(anchors))
+        if len(extras) >= n_extra:
+            plan = anchors + extras[:n_extra]
+        else:
+            # Small-scale runs can generate fewer candidate days than requested;
+            # top up deterministically so the requested row count is still met.
+            plan = anchors + extras
+            seen = {(p["player_id"], d) for p, d in plan}
+            while len(plan) < n_sessions:
+                player = rng.choice(self.players)
+                install = min(player["install_day"], max_day)
+                day = rng.randint(install, max_day)
+                if (player["player_id"], day) in seen:
+                    continue
+                seen.add((player["player_id"], day))
+                plan.append((player, day))
         rng.shuffle(plan)
         return plan[:n_sessions]
 
@@ -473,7 +508,10 @@ class Generator:
         base_rows = 0
         for i in range(n):
             player = rng.choice(self.players)
-            day = min(self.settings.n_days - 1, max(0, player["install_day"] + rng.randint(0, 6)))
+            day = min(
+                self.settings.total_days - 1,
+                max(0, player["install_day"] + rng.randint(0, 6)),
+            )
             ts = DATA_START + timedelta(days=day, seconds=rng.randint(0, 86_399))
             etype = rng.choices(EVENT_TYPES, weights=[45, 45, 5, 5], k=1)[0]
             row = {
@@ -553,7 +591,10 @@ class Generator:
         base_rows = 0
         for i in range(n):
             player = rng.choice(self.players)
-            day = min(self.settings.n_days - 1, max(0, player["install_day"] + rng.randint(0, 10)))
+            day = min(
+                self.settings.total_days - 1,
+                max(0, player["install_day"] + rng.randint(0, 10)),
+            )
             ts = DATA_START + timedelta(days=day, seconds=rng.randint(0, 86_399))
             sku, item, category, price = rng.choice(CATALOG)
             row = {
@@ -627,7 +668,8 @@ class Generator:
 
         summary = self.log.as_dict()
         summary["players"] = len(self.players)
-        summary["days"] = self.settings.n_days
+        summary["install_cohort_days"] = self.settings.n_days
+        summary["observation_days"] = self.settings.total_days
         summary["seed"] = self.settings.seed
         summary["scale"] = self.settings.scale
         summary["wall_clock_seconds"] = round(elapsed, 2)
@@ -643,8 +685,9 @@ def format_summary(summary: dict) -> str:
     lines.append("LANDING ZONE — GENERATED ROW COUNTS AND INJECTED DEFECTS")
     lines.append("=" * 78)
     lines.append(
-        f"seed={summary['seed']} scale={summary['scale']} days={summary['days']} "
-        f"players={summary['players']:,}"
+        f"seed={summary['seed']} scale={summary['scale']} "
+        f"install_cohort_days={summary['install_cohort_days']} "
+        f"observation_days={summary['observation_days']} players={summary['players']:,}"
     )
     lines.append(f"landing_root={summary['landing_root']}")
     lines.append(f"wall_clock_seconds={summary['wall_clock_seconds']}")

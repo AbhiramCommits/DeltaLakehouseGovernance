@@ -1,0 +1,326 @@
+# =============================================================================
+# DeltaLakehouseGovernance — governed catalog
+#
+# This is the Unity-Catalog-style metadata declaration for every table in the
+# lakehouse. It is the single source of truth for: ownership, domain, column
+# documentation, data classification, upstream dependencies, SLA thresholds and
+# column-level lineage.
+#
+# `dlg catalog-validate` fails if this file and the physical Delta schemas
+# drift apart in either direction (a physical column that is undeclared, or a
+# declared column that no longer exists).
+#
+# classification: PUBLIC | INTERNAL | PII | FINANCIAL
+#   PII       -> must be masked by a governed view before an analyst or an
+#                agent can read it (see src/dlg/governance/policies.py)
+#   FINANCIAL -> revenue / spend, restricted to marketing + finance roles
+# =============================================================================
+
+version: 1
+name: dlg_lakehouse
+
+domains:
+  gameplay: "Player sessions, match activity and engagement"
+  monetization: "Store purchases, revenue and payer behaviour"
+  platform: "Ingest operations, quarantined records and observability"
+
+tables:
+
+  # ===========================================================================
+  # BRONZE — raw, append-only, with ingest metadata
+  # ===========================================================================
+  bronze.sessions:
+    owner: data-engineering@studio.example
+    domain: gameplay
+    layer: bronze
+    description: >
+      Raw player-session records landed from the client telemetry firehose.
+      Immutable aside from idempotent re-ingest keyed on _record_hash.
+    classification: INTERNAL
+    upstream: []
+    sla: { max_staleness_minutes: 43200, min_daily_rows: 0, max_null_rate: 0.05 }
+    columns:
+      player_id: { type: string, description: "Surrogate player key", classification: INTERNAL, keys: [pk] }
+      session_id: { type: string, description: "Client session identifier", classification: INTERNAL, keys: [pk] }
+      player_email: { type: string, description: "Player account email captured at login", classification: PII }
+      player_ip: { type: string, description: "IPv4 address of the session", classification: PII }
+      country: { type: string, description: "ISO-3166 alpha-2 country of the session", classification: PII }
+      region: { type: string, description: "Commercial region (NA/EMEA/APAC/LATAM)", classification: INTERNAL }
+      birth_year: { type: int, description: "Self-declared year of birth", classification: PII }
+      device: { type: string, description: "Device family reported by the client", classification: INTERNAL }
+      platform: { type: string, description: "Normalised platform (mobile/pc/console)", classification: INTERNAL }
+      app_version: { type: string, description: "Client build string", classification: INTERNAL }
+      session_start_ts: { type: string, description: "Client-reported session start (ISO-8601 text at bronze)", classification: INTERNAL }
+      session_end_ts: { type: string, description: "Client-reported session end (ISO-8601 text at bronze)", classification: INTERNAL }
+      duration_minutes: { type: int, description: "Session length in minutes", classification: INTERNAL }
+      matches_played: { type: int, description: "Matches completed during the session", classification: INTERNAL }
+      kills: { type: int, description: "Eliminations recorded", classification: INTERNAL }
+      deaths: { type: int, description: "Deaths recorded", classification: INTERNAL }
+      store_views: { type: int, description: "Store screens opened during the session", classification: INTERNAL }
+      _ingest_ts: { type: timestamp, description: "Ingest wall-clock timestamp", classification: INTERNAL, keys: [audit] }
+      _source_file: { type: string, description: "Relative landing file the row came from", classification: INTERNAL, keys: [audit] }
+      _batch_id: { type: string, description: "Ingest batch identifier", classification: INTERNAL, keys: [audit] }
+      _record_hash: { type: string, description: "SHA-256 of the raw payload + source file (idempotency key)", classification: INTERNAL, keys: [pk] }
+
+  bronze.match_events:
+    owner: data-engineering@studio.example
+    domain: gameplay
+    layer: bronze
+    description: "Raw in-match events (kills, deaths, objectives, match ends)."
+    classification: INTERNAL
+    upstream: []
+    sla: { max_staleness_minutes: 43200, min_daily_rows: 0, max_null_rate: 0.05 }
+    columns:
+      event_id: { type: string, description: "Event identifier", classification: INTERNAL, keys: [pk] }
+      session_id: { type: string, description: "Owning session", classification: INTERNAL }
+      player_id: { type: string, description: "Owning player", classification: INTERNAL, keys: [pk] }
+      match_id: { type: string, description: "Match identifier", classification: INTERNAL }
+      event_type: { type: string, description: "kill | death | objective | match_end", classification: INTERNAL }
+      event_ts: { type: string, description: "When the event happened (ISO-8601 text at bronze)", classification: INTERNAL }
+      map_id: { type: string, description: "Map played", classification: INTERNAL }
+      mode: { type: string, description: "Game mode", classification: INTERNAL }
+      kills: { type: int, description: "Kill indicator for this event", classification: INTERNAL }
+      deaths: { type: int, description: "Death indicator for this event", classification: INTERNAL }
+      damage_dealt: { type: int, description: "Damage dealt in this event", classification: INTERNAL }
+      ping_ms: { type: int, description: "Client round-trip latency", classification: INTERNAL }
+      is_bot: { type: boolean, description: "Whether the opposing slot was a bot", classification: INTERNAL }
+      _ingest_ts: { type: timestamp, description: "Ingest wall-clock timestamp", classification: INTERNAL, keys: [audit] }
+      _source_file: { type: string, description: "Relative landing file", classification: INTERNAL, keys: [audit] }
+      _batch_id: { type: string, description: "Ingest batch identifier", classification: INTERNAL, keys: [audit] }
+      _record_hash: { type: string, description: "SHA-256 idempotency key", classification: INTERNAL, keys: [pk] }
+
+  bronze.purchases:
+    owner: data-engineering@studio.example
+    domain: monetization
+    layer: bronze
+    description: "Raw store transactions landed as CSV."
+    classification: FINANCIAL
+    upstream: []
+    sla: { max_staleness_minutes: 43200, min_daily_rows: 0, max_null_rate: 0.05 }
+    columns:
+      purchase_id: { type: string, description: "Transaction identifier", classification: INTERNAL, keys: [pk] }
+      session_id: { type: string, description: "Session the purchase happened in", classification: INTERNAL }
+      player_id: { type: string, description: "Purchasing player", classification: INTERNAL, keys: [pk] }
+      sku: { type: string, description: "Store SKU", classification: INTERNAL }
+      item_name: { type: string, description: "Display name of the item", classification: INTERNAL }
+      category: { type: string, description: "battle_pass | skin | currency | bundle | emote", classification: INTERNAL }
+      price_usd: { type: double, description: "Unit price in USD", classification: FINANCIAL }
+      currency: { type: string, description: "Presentment currency", classification: FINANCIAL }
+      quantity: { type: int, description: "Units purchased", classification: INTERNAL }
+      purchase_ts: { type: string, description: "Transaction time (ISO-8601 text at bronze)", classification: INTERNAL }
+      payment_method: { type: string, description: "card | paypal | store_credit | gift_card", classification: PII }
+      _ingest_ts: { type: timestamp, description: "Ingest wall-clock timestamp", classification: INTERNAL, keys: [audit] }
+      _source_file: { type: string, description: "Relative landing file", classification: INTERNAL, keys: [audit] }
+      _batch_id: { type: string, description: "Ingest batch identifier", classification: INTERNAL, keys: [audit] }
+      _record_hash: { type: string, description: "SHA-256 idempotency key", classification: INTERNAL, keys: [pk] }
+
+  bronze.quarantine:
+    owner: data-engineering@studio.example
+    domain: platform
+    layer: bronze
+    description: "Rows rejected at ingest: malformed records and unusable business keys."
+    classification: INTERNAL
+    upstream: []
+    sla: { max_staleness_minutes: 43200, min_daily_rows: 0, max_null_rate: 0.0 }
+    columns:
+      _dataset: { type: string, description: "Dataset the row was destined for", classification: INTERNAL }
+      _reject_reason: { type: string, description: "PARSE_ERROR | NULL_KEY", classification: INTERNAL }
+      _reject_detail: { type: string, description: "Human-readable rejection explanation", classification: INTERNAL }
+      _source_file: { type: string, description: "Relative landing file", classification: INTERNAL }
+      _batch_id: { type: string, description: "Ingest batch identifier", classification: INTERNAL }
+      _quarantine_ts: { type: timestamp, description: "When the row was quarantined", classification: INTERNAL }
+      _record_hash: { type: string, description: "SHA-256 of dataset+reason+payload (idempotency key)", classification: INTERNAL, keys: [pk] }
+      _raw_record: { type: string, description: "Original payload, verbatim", classification: PII }
+
+  # ===========================================================================
+  # SILVER — cleansed, typed, deduplicated, partitioned by event_date
+  # ===========================================================================
+  silver.sessions:
+    owner: analytics-engineering@studio.example
+    domain: gameplay
+    layer: silver
+    description: >
+      Conformed sessions: timestamps parsed, ranges validated, deduplicated by
+      (player_id, session_id) with the newest event_ts winning.
+    classification: PII
+    upstream: [bronze.sessions]
+    sla: { max_staleness_minutes: 43200, min_daily_rows: 0, max_null_rate: 0.05 }
+    columns:
+      session_id: { type: string, description: "Client session identifier", classification: INTERNAL, keys: [pk] }
+      player_id: { type: string, description: "Surrogate player key", classification: INTERNAL, keys: [pk] }
+      player_email: { type: string, description: "Player account email", classification: PII, sources: [bronze.sessions.player_email] }
+      player_ip: { type: string, description: "Session IPv4 address", classification: PII, sources: [bronze.sessions.player_ip] }
+      country: { type: string, description: "ISO-3166 alpha-2 country", classification: PII, sources: [bronze.sessions.country] }
+      region: { type: string, description: "Commercial region", classification: INTERNAL, sources: [bronze.sessions.region] }
+      birth_year: { type: int, description: "Self-declared year of birth", classification: PII, sources: [bronze.sessions.birth_year] }
+      device: { type: string, description: "Device family", classification: INTERNAL, sources: [bronze.sessions.device] }
+      platform: { type: string, description: "Normalised platform", classification: INTERNAL, sources: [bronze.sessions.platform] }
+      app_version: { type: string, description: "Client build string", classification: INTERNAL, sources: [bronze.sessions.app_version] }
+      session_start_ts: { type: timestamp, description: "Parsed session start", classification: INTERNAL, sources: [bronze.sessions.session_start_ts] }
+      session_end_ts: { type: timestamp, description: "Parsed session end", classification: INTERNAL, sources: [bronze.sessions.session_end_ts] }
+      event_ts: { type: timestamp, description: "Event time used for late-arrival resolution", classification: INTERNAL, sources: [bronze.sessions.session_start_ts] }
+      event_date: { type: date, description: "Partition key derived from event_ts", classification: INTERNAL, sources: [silver.sessions.event_ts] }
+      duration_minutes: { type: int, description: "Session length in minutes", classification: INTERNAL, sources: [bronze.sessions.duration_minutes] }
+      matches_played: { type: int, description: "Matches completed", classification: INTERNAL, sources: [bronze.sessions.matches_played] }
+      kills: { type: int, description: "Eliminations", classification: INTERNAL, sources: [bronze.sessions.kills] }
+      deaths: { type: int, description: "Deaths", classification: INTERNAL, sources: [bronze.sessions.deaths] }
+      store_views: { type: int, description: "Store screens opened", classification: INTERNAL, sources: [bronze.sessions.store_views] }
+      _record_hash: { type: string, description: "Inherited idempotency key", classification: INTERNAL, sources: [bronze.sessions._record_hash] }
+      _ingest_ts: { type: timestamp, description: "Ingest wall-clock timestamp", classification: INTERNAL, sources: [bronze.sessions._ingest_ts] }
+      _batch_id: { type: string, description: "Silver merge batch identifier", classification: INTERNAL }
+
+  silver.match_events:
+    owner: analytics-engineering@studio.example
+    domain: gameplay
+    layer: silver
+    description: "Conformed in-match events, deduplicated by event_id."
+    classification: INTERNAL
+    upstream: [bronze.match_events]
+    sla: { max_staleness_minutes: 43200, min_daily_rows: 0, max_null_rate: 0.05 }
+    columns:
+      event_id: { type: string, description: "Event identifier", classification: INTERNAL, keys: [pk] }
+      session_id: { type: string, description: "Owning session", classification: INTERNAL, sources: [bronze.match_events.session_id] }
+      player_id: { type: string, description: "Owning player", classification: INTERNAL, sources: [bronze.match_events.player_id] }
+      match_id: { type: string, description: "Match identifier", classification: INTERNAL, sources: [bronze.match_events.match_id] }
+      event_type: { type: string, description: "kill | death | objective | match_end", classification: INTERNAL, sources: [bronze.match_events.event_type] }
+      event_ts: { type: timestamp, description: "Parsed event time", classification: INTERNAL, sources: [bronze.match_events.event_ts] }
+      event_date: { type: date, description: "Partition key derived from event_ts", classification: INTERNAL, sources: [silver.match_events.event_ts] }
+      map_id: { type: string, description: "Map played", classification: INTERNAL, sources: [bronze.match_events.map_id] }
+      mode: { type: string, description: "Game mode", classification: INTERNAL, sources: [bronze.match_events.mode] }
+      kills: { type: int, description: "Kill indicator", classification: INTERNAL, sources: [bronze.match_events.kills] }
+      deaths: { type: int, description: "Death indicator", classification: INTERNAL, sources: [bronze.match_events.deaths] }
+      damage_dealt: { type: int, description: "Damage dealt", classification: INTERNAL, sources: [bronze.match_events.damage_dealt] }
+      ping_ms: { type: int, description: "Client latency", classification: INTERNAL, sources: [bronze.match_events.ping_ms] }
+      is_bot: { type: boolean, description: "Opponent was a bot", classification: INTERNAL, sources: [bronze.match_events.is_bot] }
+      _record_hash: { type: string, description: "Inherited idempotency key", classification: INTERNAL, sources: [bronze.match_events._record_hash] }
+      _ingest_ts: { type: timestamp, description: "Ingest wall-clock timestamp", classification: INTERNAL, sources: [bronze.match_events._ingest_ts] }
+      _batch_id: { type: string, description: "Silver merge batch identifier", classification: INTERNAL }
+
+  silver.purchases:
+    owner: analytics-engineering@studio.example
+    domain: monetization
+    layer: silver
+    description: >
+      Conformed store transactions, deduplicated by purchase_id and
+      referential-integrity checked against silver.sessions.
+    classification: FINANCIAL
+    upstream: [bronze.purchases, silver.sessions]
+    sla: { max_staleness_minutes: 43200, min_daily_rows: 0, max_null_rate: 0.02 }
+    columns:
+      purchase_id: { type: string, description: "Transaction identifier", classification: INTERNAL, keys: [pk] }
+      session_id: { type: string, description: "Session the purchase happened in", classification: INTERNAL, sources: [bronze.purchases.session_id] }
+      player_id: { type: string, description: "Purchasing player", classification: INTERNAL, sources: [bronze.purchases.player_id] }
+      sku: { type: string, description: "Store SKU", classification: INTERNAL, sources: [bronze.purchases.sku] }
+      item_name: { type: string, description: "Display name", classification: INTERNAL, sources: [bronze.purchases.item_name] }
+      category: { type: string, description: "Item category", classification: INTERNAL, sources: [bronze.purchases.category] }
+      price_usd: { type: double, description: "Unit price in USD", classification: FINANCIAL, sources: [bronze.purchases.price_usd] }
+      currency: { type: string, description: "Presentment currency", classification: FINANCIAL, sources: [bronze.purchases.currency] }
+      quantity: { type: int, description: "Units purchased", classification: INTERNAL, sources: [bronze.purchases.quantity] }
+      purchase_ts: { type: timestamp, description: "Parsed transaction time", classification: INTERNAL, sources: [bronze.purchases.purchase_ts] }
+      event_ts: { type: timestamp, description: "Event time used for late-arrival resolution", classification: INTERNAL, sources: [bronze.purchases.purchase_ts] }
+      event_date: { type: date, description: "Partition key derived from event_ts", classification: INTERNAL, sources: [silver.purchases.event_ts] }
+      payment_method: { type: string, description: "Payment instrument", classification: PII, sources: [bronze.purchases.payment_method] }
+      _record_hash: { type: string, description: "Inherited idempotency key", classification: INTERNAL, sources: [bronze.purchases._record_hash] }
+      _ingest_ts: { type: timestamp, description: "Ingest wall-clock timestamp", classification: INTERNAL, sources: [bronze.purchases._ingest_ts] }
+      _batch_id: { type: string, description: "Silver merge batch identifier", classification: INTERNAL }
+
+  silver.quarantine:
+    owner: analytics-engineering@studio.example
+    domain: platform
+    layer: silver
+    description: "Rows rejected during cleansing: bad timestamps, out-of-range values, negative amounts, unknown players."
+    classification: INTERNAL
+    upstream: [bronze.sessions, bronze.match_events, bronze.purchases]
+    sla: { max_staleness_minutes: 43200, min_daily_rows: 0, max_null_rate: 0.0 }
+    columns:
+      _dataset: { type: string, description: "Dataset the row came from", classification: INTERNAL }
+      _reject_reason: { type: string, description: "BAD_TIMESTAMP | OUT_OF_RANGE | NEGATIVE_AMOUNT | UNKNOWN_PLAYER | SILVER_VALIDATION", classification: INTERNAL }
+      _reject_detail: { type: string, description: "Human-readable rejection explanation", classification: INTERNAL }
+      _source_file: { type: string, description: "Relative landing file (null for silver rejects)", classification: INTERNAL }
+      _batch_id: { type: string, description: "Silver merge batch identifier", classification: INTERNAL }
+      _quarantine_ts: { type: timestamp, description: "When the row was quarantined", classification: INTERNAL }
+      _record_hash: { type: string, description: "SHA-256 of dataset+reason+payload (idempotency key)", classification: INTERNAL, keys: [pk] }
+      _raw_record: { type: string, description: "Original payload, verbatim", classification: PII }
+
+  # ===========================================================================
+  # GOLD — analytics marts
+  # ===========================================================================
+  gold.fct_player_daily:
+    owner: analytics-engineering@studio.example
+    domain: gameplay
+    layer: gold
+    description: "Player-day engagement fact: sessions, playtime, matches, kills, deaths and spend."
+    classification: INTERNAL
+    upstream: [silver.sessions, silver.purchases]
+    sla: { max_staleness_minutes: 43200, min_daily_rows: 1000, max_null_rate: 0.0 }
+    columns:
+      event_date: { type: date, description: "Activity date", classification: INTERNAL, keys: [pk], sources: [silver.sessions.event_date, silver.purchases.event_date] }
+      player_id: { type: string, description: "Player key", classification: INTERNAL, keys: [pk], sources: [silver.sessions.player_id, silver.purchases.player_id] }
+      country: { type: string, description: "ISO-3166 alpha-2 country", classification: PII, sources: [silver.sessions.country] }
+      region: { type: string, description: "Commercial region", classification: INTERNAL, sources: [silver.sessions.region] }
+      sessions: { type: bigint, description: "Sessions started that day", classification: INTERNAL, sources: [silver.sessions.session_id] }
+      playtime_minutes: { type: bigint, description: "Total session minutes", classification: INTERNAL, sources: [silver.sessions.duration_minutes] }
+      matches: { type: bigint, description: "Matches completed", classification: INTERNAL, sources: [silver.sessions.matches_played] }
+      kills: { type: bigint, description: "Eliminations", classification: INTERNAL, sources: [silver.sessions.kills] }
+      deaths: { type: bigint, description: "Deaths", classification: INTERNAL, sources: [silver.sessions.deaths] }
+      spend_usd: { type: double, description: "Store spend that day (price * quantity)", classification: FINANCIAL, sources: [silver.purchases.price_usd, silver.purchases.quantity] }
+
+  gold.dim_player:
+    owner: analytics-engineering@studio.example
+    domain: gameplay
+    layer: gold
+    description: "Conformed player dimension with lifetime value and a 7-day churn flag."
+    classification: PII
+    upstream: [silver.sessions, silver.purchases]
+    sla: { max_staleness_minutes: 43200, min_daily_rows: 1000, max_null_rate: 0.0 }
+    columns:
+      player_id: { type: string, description: "Player key", classification: INTERNAL, keys: [pk], sources: [silver.sessions.player_id] }
+      first_seen: { type: timestamp, description: "First observed session start", classification: INTERNAL, sources: [silver.sessions.session_start_ts] }
+      last_seen: { type: timestamp, description: "Most recent observed session start", classification: INTERNAL, sources: [silver.sessions.session_start_ts] }
+      country: { type: string, description: "ISO-3166 alpha-2 country", classification: PII, sources: [silver.sessions.country] }
+      region: { type: string, description: "Commercial region", classification: INTERNAL, sources: [silver.sessions.region] }
+      lifetime_spend: { type: double, description: "Total USD spend to date", classification: FINANCIAL, sources: [silver.purchases.price_usd, silver.purchases.quantity] }
+      lifetime_sessions: { type: bigint, description: "Distinct sessions observed", classification: INTERNAL, sources: [silver.sessions.session_id] }
+      lifetime_playtime_minutes: { type: bigint, description: "Total minutes played", classification: INTERNAL, sources: [silver.sessions.duration_minutes] }
+      days_since_last_seen: { type: int, description: "Days between the last observed activity and the dataset max date", classification: INTERNAL, sources: [silver.sessions.event_date] }
+      churn_flag: { type: boolean, description: "True when days_since_last_seen > 7", classification: INTERNAL, sources: [gold.dim_player.days_since_last_seen] }
+
+  gold.fct_monetization_daily:
+    owner: finance-analytics@studio.example
+    domain: monetization
+    layer: gold
+    description: "Daily monetization funnel: DAU, paying users, revenue, ARPDAU and payer conversion."
+    classification: FINANCIAL
+    upstream: [silver.sessions, silver.purchases]
+    sla: { max_staleness_minutes: 43200, min_daily_rows: 1, max_null_rate: 0.0 }
+    columns:
+      event_date: { type: date, description: "Calendar day", classification: INTERNAL, keys: [pk], sources: [silver.sessions.event_date, silver.purchases.event_date] }
+      dau: { type: bigint, description: "Distinct players with a session that day", classification: INTERNAL, sources: [silver.sessions.player_id] }
+      paying_users: { type: bigint, description: "Distinct players who purchased that day", classification: INTERNAL, sources: [silver.purchases.player_id] }
+      revenue_usd: { type: double, description: "Gross revenue for the day", classification: FINANCIAL, sources: [silver.purchases.price_usd, silver.purchases.quantity] }
+      arpdau: { type: double, description: "Average revenue per daily active user", classification: FINANCIAL, sources: [silver.purchases.price_usd, silver.sessions.player_id] }
+      conversion_rate: { type: double, description: "Paying users / DAU", classification: FINANCIAL, sources: [silver.purchases.player_id, silver.sessions.player_id] }
+      sessions: { type: bigint, description: "Sessions started that day", classification: INTERNAL, sources: [silver.sessions.session_id] }
+      purchases: { type: bigint, description: "Transactions that day", classification: FINANCIAL, sources: [silver.purchases.purchase_id] }
+
+  gold.fct_retention_cohort:
+    owner: product-analytics@studio.example
+    domain: gameplay
+    layer: gold
+    description: >
+      Install-cohort retention with maturity gating: a cohort only reports D7/D30
+      once the target day falls inside the observed window, otherwise NULL.
+    classification: INTERNAL
+    upstream: [silver.sessions]
+    sla: { max_staleness_minutes: 43200, min_daily_rows: 1, max_null_rate: 0.5 }
+    columns:
+      cohort_date: { type: date, description: "Install date of the cohort", classification: INTERNAL, keys: [pk], sources: [silver.sessions.event_date, silver.sessions.player_id] }
+      cohort_size: { type: bigint, description: "Players whose first session is on cohort_date", classification: INTERNAL, sources: [silver.sessions.player_id] }
+      d1_retained: { type: bigint, description: "Cohort players active exactly on cohort_date + 1", classification: INTERNAL, sources: [silver.sessions.player_id, silver.sessions.event_date] }
+      d7_retained: { type: bigint, description: "Cohort players active exactly on cohort_date + 7", classification: INTERNAL, sources: [silver.sessions.player_id, silver.sessions.event_date] }
+      d30_retained: { type: bigint, description: "Cohort players active exactly on cohort_date + 30", classification: INTERNAL, sources: [silver.sessions.player_id, silver.sessions.event_date] }
+      d1_retention: { type: double, description: "d1_retained / cohort_size", classification: INTERNAL, sources: [gold.fct_retention_cohort.d1_retained, gold.fct_retention_cohort.cohort_size] }
+      d7_retention: { type: double, description: "d7_retained / cohort_size", classification: INTERNAL, sources: [gold.fct_retention_cohort.d7_retained, gold.fct_retention_cohort.cohort_size] }
+      d30_retention: { type: double, description: "d30_retained / cohort_size", classification: INTERNAL, sources: [gold.fct_retention_cohort.d30_retained, gold.fct_retention_cohort.cohort_size] }
+      is_matured_d7: { type: boolean, description: "cohort_date + 7 is inside the observed window", classification: INTERNAL, sources: [silver.sessions.event_date] }
+      is_matured_d30: { type: boolean, description: "cohort_date + 30 is inside the observed window", classification: INTERNAL, sources: [silver.sessions.event_date] }
