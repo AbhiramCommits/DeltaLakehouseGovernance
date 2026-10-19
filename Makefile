@@ -1,13 +1,17 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
-PY      ?= .venv/bin/python
-PIP     ?= .venv/bin/pip
 VENV    := .venv
+# Use the project virtualenv when `make setup` has created one; otherwise fall
+# back to the active interpreter (CI installs into the runner's Python).
+PY      ?= $(if $(wildcard $(VENV)/bin/python),$(VENV)/bin/python,python)
+PIP     ?= $(if $(wildcard $(VENV)/bin/pip),$(VENV)/bin/pip,pip)
 export PYTHONPATH := src
 
-# CI uses DLG_SCALE=small to keep the data-tests job under a few minutes.
-SCALE   ?= full
+# CI uses DLG_SCALE=small to keep the data-tests job under a few minutes. The
+# CLI reads DLG_SCALE through its settings, so gen-data must honour it too or
+# the generated data and the baseline-check scale disagree.
+SCALE   ?= $(or $(DLG_SCALE),full)
 RESULTS := results
 
 .PHONY: help setup gen-data bronze silver gold stream stream-demo quality governance \
